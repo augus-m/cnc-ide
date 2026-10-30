@@ -1380,6 +1380,44 @@
                     <div id="mcpClientList" class="mcp-client-list"><div class="mcp-client-empty">No hay clientes MCP conectados</div></div>
                     <div class="mcp-info">Servidor local por stdio: <span class="mcp-code">gui_v/mcp_server.py</span></div>
                     <div class="helper-text">Registra este servidor en la configuración MCP de cada IA. Define CNC_MCP_CLIENT (por ejemplo, Codex o Claude) para identificarla en esta lista. Guarda los cambios para aplicar el permiso de escritura.</div>
+<div class="settings-row"><strong>Herramientas que expone el MCP</strong></div>
+<div class="helper-text">Las de lectura siempre están disponibles. Las de escritura requieren la casilla de arriba y confirm=true en cada llamada.</div>
+<div id="mcpToolList" class="mcp-client-list">
+<div class="settings-row"><span class="mcp-code">get_cnc_status</span><span class="status-badge">Lectura</span></div>
+<div class="helper-text">Devuelve conexión, puerto, coordenadas reportadas por STM32, homing y trabajo.</div>
+<div class="settings-row"><span class="mcp-code">read_cnc_terminal</span><span class="status-badge">Lectura</span></div>
+<div class="helper-text">Lee las últimas líneas de la terminal; no modifica ni envía comandos.</div>
+<div class="settings-row"><span class="mcp-code">get_motor_monitor</span><span class="status-badge">Lectura</span></div>
+<div class="helper-text">Pulsos acumulados y frecuencia STEP (Hz) por eje, tal como los muestra el monitor de motores.</div>
+<div class="settings-row"><span class="mcp-code">get_gcode_editor</span><span class="status-badge">Lectura</span></div>
+<div class="helper-text">Lee líneas del editor de G-code (máximo 1000 por llamada).</div>
+<div class="settings-row"><span class="mcp-code">get_setting</span><span class="status-badge">Lectura</span></div>
+<div class="helper-text">Lee un ajuste guardado de la GUI.</div>
+<div class="settings-row"><span class="mcp-code">get_gui_console</span><span class="status-badge">Lectura</span></div>
+<div class="helper-text">Últimas líneas del registro de consola de la GUI (lectura).</div>
+<div class="settings-row"><span class="mcp-code">send_cnc_command</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Envía una sola línea al controlador. Requiere permiso MCP y confirm=true.</div>
+<div class="settings-row"><span class="mcp-code">jog_cnc_axis</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Mueve un eje una distancia discreta; requiere MCP habilitado, homing y confirmación.</div>
+<div class="settings-row"><span class="mcp-code">control_cnc_job</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Inicia, pausa, reanuda, detiene o para en emergencia un trabajo CNC.</div>
+<div class="settings-row"><span class="mcp-code">set_gcode_editor_text</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Reemplaza el texto del editor de G-code. Guarda copia previa en data/mcp/backups.</div>
+<div class="settings-row"><span class="mcp-code">open_gcode</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Carga un archivo G-code del proyecto en la GUI.</div>
+<div class="settings-row"><span class="mcp-code">open_gerber</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Convierte y carga un Gerber del proyecto en la GUI.</div>
+<div class="settings-row"><span class="mcp-code">set_setting</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Cambia un ajuste de la GUI. Los ajustes MCP no se cambian por esta vía.</div>
+<div class="settings-row"><span class="mcp-code">clear_gui_console</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Limpia la consola visible de la GUI (el registro en disco no se borra).</div>
+<div class="settings-row"><span class="mcp-code">toggle_simulation</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Inicia o detiene la simulación, igual que el botón Simular.</div>
+<div class="settings-row"><span class="mcp-code">set_simulation_speed</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Fija la velocidad de simulación (0 a 1000).</div>
+<div class="settings-row"><span class="mcp-code">export_simulation</span><span class="status-badge">Escritura</span></div>
+<div class="helper-text">Exporta la simulación preparada a data/mcp/exports con el nombre indicado.</div>
+</div>
                 </div>
 
             </div>

@@ -175,6 +175,113 @@ async def control_cnc_job(action: str, confirm: bool = False) -> dict[str, Any]:
     return result if isinstance(result, dict) else {"result": result}
 
 
+PROJECT_ROOT = Path.home() / "Documentos" / "proyecto_cnc"
+
+
+def _safe_project_path(path: str) -> str:
+    """Solo rutas dentro de ~/Documentos/proyecto_cnc, para no leer ni abrir archivos ajenos."""
+    resolved = Path(path).expanduser().resolve()
+    if resolved != PROJECT_ROOT and PROJECT_ROOT not in resolved.parents:
+        raise PermissionError(f"ruta fuera del proyecto: {resolved}")
+    if not resolved.exists():
+        raise FileNotFoundError(f"no existe: {resolved}")
+    return str(resolved)
+
+
+# ---------- lectura: monitor, editor, ajustes y simulación ----------
+@mcp.tool()
+def get_motor_monitor() -> dict[str, Any]:
+    """Pulsos acumulados y frecuencia STEP (Hz) por eje, tal como los muestra el monitor de motores."""
+    state = _read_state()
+    return state.get("motor_pulses", {"telemetry": False, "stats": {}})
+
+
+@mcp.tool()
+async def get_gcode_editor(start: int = 0, count: int = 200) -> dict[str, Any]:
+    """Lee líneas del editor de G-code (máximo 1000 por llamada)."""
+    result = await _call_gui("get_editor", {"start": start, "count": count})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+@mcp.tool()
+async def get_setting(key: str) -> dict[str, Any]:
+    """Lee un ajuste guardado de la GUI."""
+    result = await _call_gui("get_setting", {"key": key})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+@mcp.tool()
+async def get_gui_console(lines: int = 100) -> dict[str, Any]:
+    """Últimas líneas del registro de consola de la GUI (lectura)."""
+    result = await _call_gui("get_console", {"lines": lines})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+# ---------- escritura (requieren permiso MCP y confirm=true) ----------
+@mcp.tool()
+async def set_gcode_editor_text(text: str, confirm: bool = False) -> dict[str, Any]:
+    """Reemplaza el texto del editor de G-code. Guarda copia previa en data/mcp/backups."""
+    _require_write_permission(confirm)
+    result = await _call_gui("set_editor_text", {"text": text, "confirm": True})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+@mcp.tool()
+async def open_gcode(path: str, confirm: bool = False) -> dict[str, Any]:
+    """Carga un archivo G-code del proyecto en la GUI."""
+    _require_write_permission(confirm)
+    result = await _call_gui("open_gcode", {"path": _safe_project_path(path)})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+@mcp.tool()
+async def open_gerber(path: str, params: dict[str, Any] | None = None, confirm: bool = False) -> dict[str, Any]:
+    """Convierte y carga un Gerber del proyecto en la GUI."""
+    _require_write_permission(confirm)
+    result = await _call_gui("open_gerber", {"path": _safe_project_path(path), "params": params or {}})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+@mcp.tool()
+async def set_setting(key: str, value: Any, confirm: bool = False) -> dict[str, Any]:
+    """Cambia un ajuste de la GUI. Los ajustes MCP no se cambian por esta vía."""
+    _require_write_permission(confirm)
+    result = await _call_gui("set_setting_checked", {"key": key, "value": value, "confirm": True})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+@mcp.tool()
+async def clear_gui_console(confirm: bool = False) -> dict[str, Any]:
+    """Limpia la consola visible de la GUI (el registro en disco no se borra)."""
+    _require_write_permission(confirm)
+    result = await _call_gui("clear_console_checked", {"confirm": True})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+@mcp.tool()
+async def toggle_simulation(confirm: bool = False) -> dict[str, Any]:
+    """Inicia o detiene la simulación, igual que el botón Simular."""
+    _require_write_permission(confirm)
+    result = await _call_gui("toggle_simulation", {})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+@mcp.tool()
+async def set_simulation_speed(position: int, confirm: bool = False) -> dict[str, Any]:
+    """Fija la velocidad de simulación (0 a 1000)."""
+    _require_write_permission(confirm)
+    result = await _call_gui("set_simulation_speed", {"position": position})
+    return result if isinstance(result, dict) else {"result": result}
+
+
+@mcp.tool()
+async def export_simulation(name: str = "simulacion.json", confirm: bool = False) -> dict[str, Any]:
+    """Exporta la simulación preparada a data/mcp/exports con el nombre indicado."""
+    _require_write_permission(confirm)
+    result = await _call_gui("export_simulation_checked", {"name": name, "confirm": True})
+    return result if isinstance(result, dict) else {"result": result}
+
+
 def _update_client_registry(instance_id: str, record: dict[str, Any] | None) -> None:
     MCP_DATA_DIR.mkdir(parents=True, exist_ok=True)
     with MCP_LOCK_FILE.open("a", encoding="utf-8") as lock:

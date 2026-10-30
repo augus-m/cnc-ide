@@ -24,6 +24,8 @@ OUTBOX = BRIDGE_DIR / "outbox"
 DONE = BRIDGE_DIR / "done"
 STATE = BRIDGE_DIR / "state.json"
 CONSOLE_LOG = Path(__file__).resolve().parents[1] / "data" / "gui_consola.log"
+MCP_BACKUPS = Path(__file__).resolve().parents[1] / "data" / "mcp" / "backups"
+MCP_EXPORTS = Path(__file__).resolve().parents[1] / "data" / "mcp" / "exports"
 
 
 def _atomic_write_json(path, data):
@@ -80,6 +82,11 @@ class CncBridge(QObject):
             "layers": layers,
             "last_offset": getattr(w, "_last_offset", None),
             "console_log": str(CONSOLE_LOG),
+            "motor_pulses": {
+                "telemetry": bool(getattr(w, "_pulse_telemetry_received", False)),
+                "stats": {k: dict(v) for k, v in (getattr(w, "_motor_pulse_stats", {}) or {}).items()},
+            },
+            "editor_lines": len(w.editor.get_lines()) if hasattr(w, "editor") else 0,
         }
 
     def _write_state(self):
@@ -239,3 +246,62 @@ class CncBridge(QObject):
         self.w.sim_speed_slider.setValue(pos)
         speed = self.w._slider_pos_to_speed(pos)
         return {"position": pos, "speed_mm_s": round(speed, 2)}
+
+    # ---------- lectura de monitor, editor y consola ----------
+    def _do_get_motor_monitor(self):
+        stats = getattr(self.w, "_motor_pulse_stats", {}) or {}
+        return {
+            "telemetry": bool(getattr(self.w, "_pulse_telemetry_received", False)),
+            "stats": {k: dict(v) for k, v in stats.items()},
+        }
+
+    def _do_get_editor(self, start=0, count=200):
+        lines = self.w.editor.get_lines()
+        start = max(0, int(start))
+        count = max(1, min(1000, int(count)))
+        return {
+            "total_lines": len(lines),
+            "start": start,
+            "lines": lines[start:start + count],
+        }
+
+    def _do_get_console(self, lines=100):
+        count = max(1, min(1000, int(lines)))
+        try:
+            text = CONSOLE_LOG.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            return {"lines": []}
+        return {"lines": text.splitlines()[-count:]}
+
+    # ---------- escritura del editor (con copia previa) ----------
+    def _do_set_editor_text(self, text, confirm=False):
+        if not confirm:
+            raise PermissionError("set_editor_text requiere confirm=true")
+        if self.w.job_running:
+            raise RuntimeError("hay un trabajo en curso; no se puede reemplazar el G-code")
+        MCP_BACKUPS.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup = MCP_BACKUPS / f"editor-{stamp}.gcode"
+        backup.write_text("\n".join(self.w.editor.get_lines()), encoding="utf-8")
+        new_lines = str(text).splitlines()
+        self.w.editor.load_lines(new_lines)
+        return {"lines": len(new_lines), "backup": str(backup)}
+
+    def _do_clear_console_checked(self, confirm=False):
+        if not confirm:
+            raise PermissionError("clear_console requiere confirm=true")
+        return self._do_clear_console()
+
+    def _do_set_setting_checked(self, key, value, confirm=False):
+        if not confirm:
+            raise PermissionError("set_setting requiere confirm=true")
+        if "mcp" in str(key).lower():
+            raise PermissionError("los ajustes MCP se cambian en la pestaña MCP, no por esta vía")
+        return self._do_set_setting(key, value)
+
+    def _do_export_simulation_checked(self, name="simulacion.json", confirm=False):
+        if not confirm:
+            raise PermissionError("export_simulation requiere confirm=true")
+        MCP_EXPORTS.mkdir(parents=True, exist_ok=True)
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", str(name))[:80] or "simulacion.json"
+        return self._do_export_simulation(str(MCP_EXPORTS / safe))
