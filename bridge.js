@@ -78,6 +78,7 @@
       const axes = state.axesEnabled || {X:true, Y:true, Z:false};
       ['X','Y','Z'].forEach(axis => { const input=byId(`axisEnable${axis}`); if(input) input.checked=!!axes[axis]; });
       window.setEnabledAxesUI?.(axes);
+      const ignoreZ=byId('ignoreZForXY'); if(ignoreZ) ignoreZ.checked=!!state.ignoreZForXY;
     }
     window.setMotorPulseTelemetry?.(state.pulseStats || {}, !!state.pulseTelemetry, !!state.connected, false);
     if (!state.simulationRunning) {
@@ -97,6 +98,7 @@
 
     const position = state.position || {};
     if (window.viewerAPI) window.viewerAPI.setHostPosition(position.x, position.y, position.z, !!state.positionValid);
+    window.viewerAPI?.setHostSimulationRunning?.(!!state.simulationRunning);
     if (state.theme && state.theme !== lastAppliedTheme && typeof window.setTheme === 'function') {
       lastAppliedTheme = state.theme;
       window.setTheme(state.theme);
@@ -117,7 +119,14 @@
       [s.total,s.g0,s.g1,s.arcs,s.mcodes,s.distance,s.bounds,s.boundary].forEach((value,i)=>{ if(statWidget[i]) statWidget[i].textContent = value ?? '-'; });
     }
     const stateRow = widgets[2]?.querySelector('.status-badge');
-    if (stateRow) stateRow.textContent = state.simulationRunning ? 'Simulación' : (state.machineState || (state.jobRunning ? 'En marcha' : 'Listo'));
+    if (stateRow) {
+      const line = Number(state.activeLine) > 0 ? ` · línea ${state.activeLine}` : '';
+      stateRow.textContent = state.machineState === 'ALARMA' ? 'ALARMA · requiere recuperación' :
+        state.jobPaused ? 'Pausado' + line : state.jobRunning ? 'Trabajo en curso' + line :
+        state.simulationRunning ? 'Simulación' + line :
+        !state.homed ? 'Requiere homing' : !state.positionFresh ? 'Posición desactualizada' : 'Listo · origen fijado';
+      stateRow.title = `Posición: ${state.positionState || 'desconocida'} · Homing: ${state.homed ? 'hecho' : 'pendiente'}`;
+    }
     const lineCount=widgets[2]?.querySelector('.data-row .val-data');
     if(lineCount) lineCount.textContent=state.lineCount || '-';
     const progress = widgets[2]?.querySelector('.progress-bar-fill');
@@ -241,7 +250,18 @@
     window.setTheme = theme => { originalSetTheme(theme); api.setTheme(theme); };
     window.togglePolling = () => api.setPolling(!lastState?.polling);
     window.actionBtn = action => {
-      if (action === 'Iniciar') api.startJob(activeEditorText());
+      if (action === 'Iniciar') {
+        const text = activeEditorText();
+        const review = source => api.preflightJob(source, report => {
+          const errors = report?.errors || [], warnings = report?.warnings || [];
+          if (errors.length) { toast(`No se puede iniciar: ${errors.join(' · ')}`, 'error'); return; }
+          const summary = `Revisión previa: ${report.segments} movimientos, ${Number(report.distance).toFixed(1)} mm.` +
+            (warnings.length ? `\n\nAvisos:\n• ${warnings.join('\n• ')}` : '\nSin avisos.');
+          if (window.confirm(summary + '\n\n¿Iniciar el trabajo?')) api.startJob(source);
+        });
+        if (text.trim()) review(text);
+        else api.currentProgram(program => review(program?.text || ''));
+      }
       else if (action === 'Pausar') api.pauseJob();
       else if (action === 'Detener') api.stopJob();
       else if (action === 'E-Stop') api.emergencyStop();
@@ -284,6 +304,7 @@
       api.savePreferences(poll,x,y,alpha);
       const axes = {X:!!byId('axisEnableX')?.checked, Y:!!byId('axisEnableY')?.checked, Z:!!byId('axisEnableZ')?.checked};
       api.setEnabledAxes(axes.X,axes.Y,axes.Z);
+      api.setIgnoreZForXY(!!byId('ignoreZForXY')?.checked);
       window.setEnabledAxesUI?.(axes);
       api.saveMcpConfig(!!byId('mcpWriteEnabled')?.checked);
       window.closeSettings();
@@ -335,6 +356,7 @@
       const rapid=[...document.querySelectorAll('.sidebar-toggle')].find(x=>x.textContent.includes('G0'))?.querySelector('input')?.checked;
       const cuts=[...document.querySelectorAll('.sidebar-toggle')].find(x=>x.textContent.includes('G1'))?.querySelector('input')?.checked;
       api.setMotionVisibility(!!rapid, cuts !== false);
+      window.viewerAPI?.setMotionVisibility(!!rapid, cuts !== false);
     }));
     byId('foSlider')?.addEventListener('change',e=>api.setFeedOverride(Number(e.target.value)));
     byId('foSlider')?.addEventListener('input',e=>{const label=byId('foLabel');if(label)label.textContent=`${e.target.value}%`;});
@@ -387,7 +409,7 @@
     });
     api.programChanged.connect(renderProgram);
     api.consoleChanged.connect(renderConsole);
-    api.positionChanged.connect((x,y,z,valid)=>window.viewerAPI?.setHostPosition(x,y,z,valid));
+    api.positionChanged.connect((x,y,z,valid,cutting)=>window.viewerAPI?.setHostPosition(x,y,z,valid,cutting));
     api.initialState(renderState);
     api.currentProgram(renderProgram);
   });

@@ -541,14 +541,11 @@
         }
         .motor-window canvas { width: 100%; height: 100%; display: block; }
         .motor-live-stats {
-            align-self: flex-start; display: inline-flex; align-items: center; justify-content: flex-start;
-            flex-wrap: wrap; gap: 3px 9px; width: fit-content; max-width: 100%; min-height: 27px;
-            padding: 3px 8px; border: 1px solid var(--glass-border);
-            border-radius: 8px; background: rgba(0,0,0,.16); font: 10px ui-monospace, monospace;
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            min-height: 38px; padding: 7px 10px; border: 1px solid var(--glass-border);
+            border-radius: 10px; background: rgba(0,0,0,.16); font: 11px ui-monospace, monospace;
         }
-        .motor-live-stats .pulse-count { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
-        .motor-live-stats strong { color: var(--apple-green); font-size: 11px; white-space: nowrap; }
-        .motor-live-stats .pulse-link { color: var(--text-muted); font: 9px ui-sans-serif, system-ui, sans-serif; white-space: nowrap; }
+        .motor-live-stats strong { color: var(--apple-green); font-size: 13px; }
         .motor-live-caption { color: var(--text-muted); font-size: 10px; margin: 0 2px 6px; }
 
         /* =========================================================
@@ -832,6 +829,13 @@
                 <div class="view-tabs">
                     <div class="view-tab active">Toolpath 2D</div>
                     <div class="view-tab">Vista 3D</div>
+                </div>
+                <div id="machiningControls" style="display:none;align-items:center;gap:6px;margin-left:6px">
+                    <button class="top-btn" id="machiningToggle" onclick="toggleMachining()">Simular mecanizado</button>
+                    <span id="machiningOptions" style="display:none;align-items:center;gap:6px">
+                        <label class="top-btn" style="display:flex;align-items:center;gap:5px"><input id="polygonToggle" type="checkbox" checked> Polígonos</label>
+                        <button class="top-btn" onclick="resetMachining()">Reiniciar pieza</button>
+                    </span>
                 </div>
             </div>
 
@@ -1238,6 +1242,11 @@
                         <input type="checkbox" id="axisEnableZ" class="axis-enable-toggle">
                     </div>
                     <div class="helper-text">Al activar un eje aparecen sus controles en la interfaz. El firmware STM32 actual controla X/Y; Z requiere añadir su salida de motor en el firmware para moverlo físicamente.</div>
+                    <div class="settings-checkbox-row" style="margin-top:12px">
+                        <input type="checkbox" id="ignoreZForXY">
+                        <label for="ignoreZForXY">Ejecutar solo X/Y e ignorar Z</label>
+                    </div>
+                    <div class="helper-text" style="color:#f59e0b">Compatibilidad temporal: se omite Z y los rápidos XY pasan a G1 F50 mm/min. La herramienta permanece a su altura física actual; no usar para fresar profundidad hasta tener Z funcional.</div>
                 </div>
 
                 <!-- TAB: VISOR 2D -->
@@ -1555,6 +1564,7 @@
             document.querySelectorAll('.settings-input').forEach(i => i.value = i.defaultValue || '');
             document.querySelectorAll('.settings-checkbox-row input[type="checkbox"]').forEach(c => c.checked = true);
             $('axisEnableX').checked = true; $('axisEnableY').checked = true; $('axisEnableZ').checked = false;
+            $('ignoreZForXY').checked = false;
             window.setEnabledAxesUI?.({X:true,Y:true,Z:false});
             addLog('> Ajustes restaurados por defecto', 'success');
         }
@@ -1739,11 +1749,18 @@
            ============================================================ */
         function drawGraphOnCanvas(canvas, motor) {
             const ctx = canvas.getContext('2d');
-            const w = canvas.clientWidth || canvas.width;
-            const h = canvas.clientHeight || canvas.height;
+            const container = canvas.parentElement;
+            const w = container ? container.clientWidth : canvas.clientWidth;
+            const h = container ? container.clientHeight : canvas.clientHeight;
             if (w <= 0 || h <= 0) return;
             const dpr = window.devicePixelRatio || 1;
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            const pixelWidth = Math.round(w * dpr);
+            const pixelHeight = Math.round(h * dpr);
+            if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+                canvas.width = pixelWidth;
+                canvas.height = pixelHeight;
+            }
+            ctx.setTransform(canvas.width / w, 0, 0, canvas.height / h, 0, 0);
             ctx.clearRect(0, 0, w, h);
 
             const theme = document.getElementById('app').getAttribute('data-theme');
@@ -1752,13 +1769,11 @@
             const color = motor === 'X' ? '#a855f7' : motor === 'Y' ? '#27C93F' : '#0A84FF';
             const latestRate = history.length ? history[history.length - 1].rate : 0;
             const peak = Math.max(1, ...history.map(sample => sample.rate));
-            /* Evita que una señal casi nula se amplifique hasta llenar el
-             * gráfico: el rango base representa 0–2000 pulsos por segundo. */
-            const roughStep = Math.max(250, peak * 1.15 / 4);
+            const roughStep = Math.max(1, peak * 1.15 / 4);
             const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
             const scaled = roughStep / magnitude;
             const step = (scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 5 ? 5 : 10) * magnitude;
-            const maxRate = Math.max(2000, step * 4);
+            const maxRate = step * 4;
             const left = 58, right = w - 14, top = 27, bottom = h - 34;
             const plotW = Math.max(1, right - left), plotH = Math.max(1, bottom - top);
             const grid = isDark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.12)';
@@ -1822,15 +1837,7 @@
                 const count = win.querySelector('.pulse-count');
                 const rate = win.querySelector('.pulse-rate');
                 const link = win.querySelector('.pulse-link');
-                const totalPulses = Math.max(0, Number(value.count) || 0);
-                const compactCount = totalPulses >= 1_000_000
-                    ? `${(totalPulses / 1_000_000).toFixed(1)} M`
-                    : totalPulses >= 10_000 ? `${(totalPulses / 1_000).toFixed(1)} k`
-                    : totalPulses.toLocaleString();
-                if (count) {
-                    count.textContent = axis === 'Z' ? 'Sin salida STEP Z' : `STEP ${compactCount}`;
-                    count.title = axis === 'Z' ? 'El firmware actual no tiene salida STEP para Z' : `Pulsos acumulados: ${totalPulses.toLocaleString()}`;
-                }
+                if (count) count.textContent = axis === 'Z' ? 'Sin salida STEP Z' : `Pulsos: ${(Number(value.count) || 0).toLocaleString()}`;
                 if (rate) rate.textContent = axis === 'Z' ? '—' : `${(Number(value.rate) || 0).toFixed(0)} Hz`;
                 if (link) link.textContent = !connected ? 'Desconectado' : telemetryAvailable ? 'STM32 · en vivo' : 'Esperando STM32';
                 const canvas = win.querySelector('canvas');
@@ -2188,10 +2195,62 @@ const HL = { PTH: {c:'#00ffff', v:true, h:[]}, NPTH: {c:'#ff00ff', v:true, h:[]}
 const tool = {x:0, y:0, z:0, valid:true};
 const v2 = {zoom:1, px:0, py:0};
 const v3 = {rz:30, rx:45, zoom:1, px:0, py:0, sf:1.5};
-let view = '2d', showRapid = true, showCut = true, mouse = null, T2 = null;
+let view = '2d', showRapid = false, showCut = true, mouse = null, T2 = null;
 let hostTarget = null, hostFrame = 0, hostFrameTime = 0;
 let staticVersion = 0, staticKey2 = '', staticKey3 = '';
 const staticCanvas2 = document.createElement('canvas'), staticCanvas3 = document.createElement('canvas');
+const stockCanvas = document.createElement('canvas');
+const machining = {enabled:false, polygons:true, running:false, heights:null, nx:41, ny:41, depth:12, cutterRadius:3, x:0, y:0, z:0};
+let stockVersion=0, stockCacheKey='';
+function resetMachining() {
+  machining.heights = Array.from({length:machining.ny}, () => new Float32Array(machining.nx).fill(0));
+  stockVersion++; stockCacheKey=''; draw();
+}
+function toggleMachining() {
+  machining.enabled = !machining.enabled;
+  if (machining.enabled) resetMachining();
+  const btn = $('machiningToggle');
+  btn.textContent = machining.enabled ? 'Mecanizado activo · pulsa Simular' : 'Simular mecanizado';
+  $('machiningOptions').style.display = machining.enabled ? 'flex' : 'none';
+  btn.classList.toggle('is-running', machining.enabled);
+  draw();
+}
+function drawStockMesh(ctx, t) {
+  const d=window.devicePixelRatio||1, W=vz.clientWidth, H=vz.clientHeight;
+  const key=[c3.width,c3.height,stockVersion,v3.rz,v3.rx,v3.zoom,v3.px,v3.py].join(':');
+  if(key!==stockCacheKey) {
+    stockCanvas.width=c3.width; stockCanvas.height=c3.height;
+    const mesh=stockCanvas.getContext('2d'); mesh.setTransform(d,0,0,d,0,0); mesh.clearRect(0,0,W,H);
+  const cellX = AX/(machining.nx-1), cellY = AY/(machining.ny-1), faces=[];
+  for (let j=0;j<machining.ny-1;j++) for(let i=0;i<machining.nx-1;i++) {
+    const a=[i*cellX,j*cellY,machining.heights[j][i]], b=[(i+1)*cellX,j*cellY,machining.heights[j][i+1]],
+      c=[(i+1)*cellX,(j+1)*cellY,machining.heights[j+1][i+1]], d=[i*cellX,(j+1)*cellY,machining.heights[j+1][i]];
+    faces.push([a,b,c],[a,c,d]);
+  }
+  faces.sort((a,b)=>((a[0][0]+a[0][1]+a[1][0]+a[1][1]+a[2][0]+a[2][1]) - (b[0][0]+b[0][1]+b[1][0]+b[1][1]+b[2][0]+b[2][1])));
+  mesh.save(); mesh.lineWidth=.45;
+  for (const face of faces) {
+    const pts=face.map(v=>p3(t,v[0],v[1],v[2]));
+    const avg=face.reduce((n,v)=>n+v[2],0)/3, cut=Math.max(0,Math.min(1,-avg/machining.depth));
+    mesh.beginPath(); mesh.moveTo(...pts[0]); mesh.lineTo(...pts[1]); mesh.lineTo(...pts[2]); mesh.closePath();
+    mesh.fillStyle=`rgb(${Math.round(94-38*cut)},${Math.round(154-70*cut)},${Math.round(205-55*cut)})`;
+    mesh.fill(); mesh.strokeStyle='rgba(20,45,70,.22)'; mesh.stroke();
+  }
+    mesh.restore(); stockCacheKey=key;
+  }
+  ctx.drawImage(stockCanvas,0,0,W,H);
+}
+function removeStockAt(px,py,pz) {
+  if (!machining.enabled || !machining.running || !machining.heights || pz >= 0) return;
+  const sx=AX/(machining.nx-1), sy=AY/(machining.ny-1), ix=Math.round(px/sx), iy=Math.round(py/sy), r=Math.ceil(machining.cutterRadius/Math.min(sx,sy));
+  const cutZ=Math.max(-machining.depth,Math.min(0,pz));
+  let changed=false;
+  for(let j=Math.max(0,iy-r);j<=Math.min(machining.ny-1,iy+r);j++) for(let i=Math.max(0,ix-r);i<=Math.min(machining.nx-1,ix+r);i++) {
+    const dist=Math.hypot(i*sx-px,j*sy-py);
+    if(dist<=machining.cutterRadius && cutZ<machining.heights[j][i]) { machining.heights[j][i]=cutZ; changed=true; }
+  }
+  if(changed) { stockVersion++; stockCacheKey=''; }
+}
 
 /* ---- 2D: mundo -> pantalla ---- */
 function xf2(W, H) {
@@ -2331,6 +2390,7 @@ function draw3() {
     staticKey3=key;
   }
   x.drawImage(staticCanvas3,0,0,W,H);
+  if (machining.enabled && machining.polygons && machining.heights) drawStockMesh(x, t);
   if (tool.valid) {
     const tip = p3(t, tool.x, tool.y, tool.z), top = p3(t, tool.x, tool.y, tool.z+15);
     x.strokeStyle = '#ff4422'; x.lineWidth = 3; x.beginPath(); x.moveTo(tip[0],tip[1]); x.lineTo(top[0],top[1]); x.stroke();
@@ -2344,6 +2404,7 @@ function draw3() {
 const draw = () => view === '2d' ? draw2() : draw3();
 function setView(v) {
   view = v; c2.style.display = v === '2d' ? '' : 'none'; c3.style.display = v === '3d' ? '' : 'none';
+  $('machiningControls').style.display = v === '3d' ? 'flex' : 'none';
   document.querySelectorAll('.view-tab').forEach((e,i) => e.classList.toggle('active', (i === 0) === (v === '2d')));
   if (v === '3d') { if (!v3.fitted) { v3.zoom = 1; v3.px = v3.py = 0; v3.fitted = true; } c3.focus(); }
   draw();
@@ -2414,10 +2475,11 @@ function setTool(px, py, pz) {
   const v = document.querySelectorAll('.sidebar-right .widget')[0].querySelectorAll('.val-data');
   v[0].textContent = tool.x.toFixed(2); v[1].textContent = tool.y.toFixed(2); v[2].textContent = tool.z.toFixed(2); draw();
 }
-function setHostPosition(px, py, pz, valid) {
+function setHostPosition(px, py, pz, valid, cutting=false) {
   const wasValid = tool.valid;
   const nextValid = !!valid;
   const nx = Number(px) || 0, ny = Number(py) || 0, nz = Number(pz) || 0;
+  if (nextValid && cutting && view === '3d') { machining.x=nx; machining.y=ny; machining.z=nz; removeStockAt(nx,ny,nz); }
   let immediateDraw = false;
   tool.valid = nextValid;
   if (!nextValid) {
@@ -2462,6 +2524,7 @@ function animateHostPosition(now) {
   if (hostTarget) hostFrame=requestAnimationFrame(animateHostPosition);
 }
 function setHostProgram(program) {
+  machining.motion = program.motion || [];
   Object.entries(program.layers || {}).forEach(([name, layer]) => {
     if (!L[name]) L[name] = {c:layer.color || '#ff8c42', w:2, v:true, s:[]};
     L[name].c = layer.color || L[name].c;
@@ -2488,6 +2551,10 @@ window.viewerAPI = {L, HL, setTool, setHostPosition, setHostProgram, setView,
   setMotionVisibility,
   reset2: () => { v2.zoom = 1; v2.px = v2.py = 0; draw(); }, reset3,
   fit3: () => { fit3(vz.clientWidth, vz.clientHeight); draw(); }, redraw: draw};
+window.viewerAPI.setHostSimulationRunning = running => { machining.running=!!running; };
+window.toggleMachining = toggleMachining;
+window.resetMachining = resetMachining;
+document.getElementById('polygonToggle').addEventListener('change', e => { machining.polygons=e.target.checked; draw(); });
 window.setHostConnection = (connected, polling) => { isConnected = !!connected; isPolling = !!polling; };
 
 /* ---- Jog / Máquina ---- */
@@ -2515,12 +2582,12 @@ window.setEnabledAxesUI = axes => {
   });
   document.querySelectorAll('.motor-window:not(.editor-window)').forEach(win => {
     if (!enabledAxes[win.dataset.motor]) {
-      const nextTab = ['X','Y','Z'].find(axis => enabledAxes[axis]);
-      win.dataset.motor = nextTab || '';
-      const activeTab = nextTab ? win.querySelector(`.motor-tab[data-motor="${nextTab}"]`) : null;
+      const nextAxis = ['X','Y','Z'].find(axis => enabledAxes[axis]);
+      win.dataset.motor = nextAxis || '';
+      const activeTab = nextAxis ? win.querySelector(`.motor-tab[data-motor="${nextAxis}"]`) : null;
       win.querySelectorAll('.motor-tab').forEach(tab => tab.classList.toggle('active', tab === activeTab));
       const canvas = win.querySelector('canvas');
-      if (canvas && nextTab) drawGraphOnCanvas(canvas, nextTab);
+      if (canvas && nextAxis) drawGraphOnCanvas(canvas, nextAxis);
     }
   });
 };

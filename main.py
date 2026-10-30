@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -21,6 +22,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from main_window import MainWindow as NativeBackendWindow  # noqa: E402
 from serial_worker import list_ports  # noqa: E402
+from gcode_model import parse_program  # noqa: E402
 
 
 class CncWebBridge(QObject):
@@ -30,7 +32,7 @@ class CncWebBridge(QObject):
     pulseStatsChanged = Signal(dict)
     consoleChanged = Signal(str)
     programChanged = Signal(dict)
-    positionChanged = Signal(float, float, float, bool)
+    positionChanged = Signal(float, float, float, bool, bool)
 
     def __init__(self, window: "LiquidGlassWindow"):
         super().__init__(window)
@@ -85,6 +87,41 @@ class CncWebBridge(QObject):
         self.backend.settings.setValue("axis_enabled_y", bool(y_enabled))
         self.backend.settings.setValue("axis_enabled_z", bool(z_enabled))
         self.backend.settings.sync()
+
+    @Slot(bool)
+    def setIgnoreZForXY(self, enabled: bool) -> None:
+        self.backend.settings.setValue("ignore_z_for_xy", bool(enabled))
+        self.backend.settings.sync()
+
+    @staticmethod
+    def _strip_z_motion(lines: list[str]) -> list[str]:
+        """Prepara un programa XY: omite Z y limita rápidos a F50 mm/min."""
+        result = []
+        z_word = re.compile(r"(?<![A-Z])Z\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)", re.I)
+        motion = re.compile(r"\bG0?\s*(?:G)?[0-3]\b", re.I)
+        xy_word = re.compile(r"(?<![A-Z])[XY]\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)", re.I)
+        m_word = re.compile(r"\bM\d+(?:\.\d+)?\b", re.I)
+        for raw in lines:
+            code, separator, comment = raw.partition(";")
+            protected = []
+            def hold(match):
+                protected.append(match.group(0))
+                return f"__COMMENT_{len(protected)-1}__"
+            code = re.sub(r"\([^)]*\)", hold, code)
+            code = z_word.sub("", code)
+            code = re.sub(r"__COMMENT_(\d+)__", lambda m: protected[int(m.group(1))], code)
+            if re.match(r"^\s*G0+\b", code, re.I) and xy_word.search(code):
+                code = re.sub(r"^\s*G0+\b", "G1", code, count=1, flags=re.I)
+                code = re.sub(r"(?<![A-Z])F\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)", "", code, flags=re.I)
+                code = code.rstrip() + " F50.0"
+            if motion.search(code) and not xy_word.search(code):
+                code = " ".join(m_word.findall(code))
+            output = re.sub(r"\s+", " ", code).strip()
+            if separator:
+                output = f"{output} ;{comment}" if output else f";{comment}"
+            if output.strip():
+                result.append(output)
+        return result
 
     @Slot(str)
     def sendCommand(self, command: str) -> None:
@@ -141,11 +178,64 @@ class CncWebBridge(QObject):
     @Slot(str)
     def startJob(self, editor_text: str) -> None:
         text = str(editor_text).strip()
-        if text:
-            lines = [line.rstrip() for line in text.splitlines() if line.strip()]
-            self.backend._load_gcode(lines, "Editor G-code", add_to_list=False)
+        lines = [line.rstrip() for line in text.splitlines() if line.strip()] if text else list(self.backend.gcode_lines)
+        report = self.preflightJob("\n".join(lines))
+        if report["errors"]:
+            self._log("Trabajo bloqueado: " + "; ".join(report["errors"]), level="error")
+            return
+        ignore_z = self.backend.settings.value("ignore_z_for_xy", False, type=bool)
+        if ignore_z:
+            lines = self._strip_z_motion(lines)
+            if not lines:
+                self._log("No quedan movimientos X/Y después de omitir Z", level="error")
+                return
+        if text or ignore_z:
+            name = "Trabajo XY (Z omitido)" if ignore_z else "Editor G-code"
+            self.backend._load_gcode(lines, name, add_to_list=False)
+        if lines:
+            # _on_start_job vuelve a leer el editor Qt oculto; sincronizarlo
+            # evita que un programa antiguo sustituya el Gerber activo.
+            self.backend.editor.load_lines(lines)
         self.backend._on_start_job()
         self.publishProgram()
+
+    @Slot(str, result="QVariantMap")
+    def preflightJob(self, source: str) -> dict[str, Any]:
+        lines = [s for s in str(source).splitlines() if s.strip()]
+        model = parse_program(lines)
+        stats = model["stats"]
+        errors, warnings = [], [f"Línea {w['line']}: {w['text']}" for w in model["warnings"]]
+        if not lines:
+            errors.append("El programa está vacío")
+        if not self.backend.connected:
+            errors.append("STM32 desconectado")
+        if not getattr(self.backend, "_pos_valid", False):
+            errors.append("Falta fijar el origen con homing ($H)")
+        last_report = float(getattr(self.backend, "_last_position_reported", 0.0))
+        freshness_limit = max(2.5, float(self.backend.poll_interval) / 1000.0 * 3.0)
+        if self.backend.connected and (not getattr(self.backend, "_position_reported", False) or
+                                       time.monotonic() - last_report > freshness_limit):
+            errors.append("La posición de la placa no está actualizada; revisa el polling")
+        has_z = any(abs(s[7] - s[6]) > 1e-6 for s in model["segments"])
+        ignore_z = self.backend.settings.value("ignore_z_for_xy", False, type=bool)
+        if has_z and ignore_z:
+            warnings.append("Se omitirá Z; la herramienta queda a su altura física actual y los rápidos XY se limitan a G1 F50 mm/min")
+        elif has_z:
+            errors.append("El programa mueve Z; el firmware actual solo ejecuta X/Y. Activa ‘Ejecutar solo X/Y e ignorar Z’ para continuar")
+        ax, ay = float(self.backend.canvas_2d.area_x), float(self.backend.canvas_2d.area_y)
+        if stats["min_x"] is not None and (stats["min_x"] < 0 or stats["max_x"] > ax):
+            errors.append(f"X fuera del área configurada (0–{ax:g} mm)")
+        if stats["min_y"] is not None and (stats["min_y"] < 0 or stats["max_y"] > ay):
+            errors.append(f"Y fuera del área configurada (0–{ay:g} mm)")
+        if not model["segments"]:
+            errors.append("No hay movimientos G0–G3 para ejecutar")
+        for warning in model["warnings"]:
+            if warning["code"] == "modal_motion":
+                errors.append(f"Línea {warning['line']}: el firmware requiere G0/G1/G2/G3 explícito")
+            elif warning["code"] == "unsupported_g":
+                errors.append(f"Línea {warning['line']}: comando {warning['text']}")
+        return {"ok": not errors, "errors": errors, "warnings": warnings,
+                "segments": len(model["segments"]), "distance": stats["distance"]}
 
     @Slot()
     def pauseJob(self) -> None:
@@ -331,7 +421,10 @@ class CncWebBridge(QObject):
         w = self.backend
         position_reported = bool(getattr(w, "_position_reported", False))
         simulation_running = bool(w.simulator.running)
-        position_available = position_reported or simulation_running
+        position_fresh = (position_reported and w.connected and
+                          time.monotonic() - float(getattr(w, "_last_position_reported", 0.0))
+                          <= max(2.5, float(w.poll_interval) / 1000.0 * 3.0))
+        position_available = position_fresh or simulation_running
         mcp_config = {}
         mcp_clients = {}
         try:
@@ -361,6 +454,7 @@ class CncWebBridge(QObject):
                 "Y": w.settings.value("axis_enabled_y", True, type=bool),
                 "Z": w.settings.value("axis_enabled_z", False, type=bool),
             },
+            "ignoreZForXY": bool(w.settings.value("ignore_z_for_xy", False, type=bool)),
             "connected": bool(w.connected),
             "port": str(w.current_port),
             "polling": bool(w.polling_enabled),
@@ -369,8 +463,8 @@ class CncWebBridge(QObject):
             "areaY": float(w.canvas_2d.area_y),
             "theme": str(w.settings.value("web_theme", "black", type=str)),
             "position": {
-                "x": self._number(w.lbl_x.text()) if position_reported else (float(w.canvas_2d.current_x) if simulation_running else None),
-                "y": self._number(w.lbl_y.text()) if position_reported else (float(w.canvas_2d.current_y) if simulation_running else None),
+                "x": float(w.canvas_2d.current_x) if simulation_running else (self._number(w.lbl_x.text()) if position_reported else None),
+                "y": float(w.canvas_2d.current_y) if simulation_running else (self._number(w.lbl_y.text()) if position_reported else None),
                 "z": float(getattr(w, "current_z", 0.0)) if position_available else None,
             },
             "pulseStats": {
@@ -379,7 +473,14 @@ class CncWebBridge(QObject):
             },
             "pulseTelemetry": bool(getattr(w, "_pulse_telemetry_received", False)),
             "positionValid": position_available,
+            "positionFresh": position_fresh or simulation_running,
+            "positionState": ("simulación" if simulation_running else
+                              "fresca" if position_fresh else
+                              "desactualizada" if position_reported else "sin posición"),
             "homed": bool(getattr(w, "_pos_valid", False)),
+            "activeLine": (int(w.simulator.segments[w.simulator.current_idx][5]) + 1
+                           if simulation_running and w.simulator.current_idx < len(w.simulator.segments)
+                           else int(getattr(w, "job_current", 0)) if w.job_running else 0),
             "mcp": {
                 "write_enabled": bool(mcp_config.get("write_enabled", False)),
                 "clients": connected_mcp_clients,
@@ -413,6 +514,10 @@ class CncWebBridge(QObject):
 
     def buildProgram(self) -> dict[str, Any]:
         w = self.backend
+        # _load_gcode conserva el programa activo en gcode_lines; el editor
+        # nativo permanece oculto en esta GUI y puede no contener ese texto.
+        program_text = "\n".join(w.gcode_lines) if w.gcode_lines else w.editor.toPlainText()
+        model = parse_program(program_text.splitlines())
         layers = {}
         for name, layer in w.canvas_2d.layers.items():
             layers[name] = {
@@ -428,11 +533,13 @@ class CncWebBridge(QObject):
                 "holes": [list(hole) for hole in layer.get("holes", [])],
             }
         return {
-            "text": w.editor.toPlainText(),
+            "text": program_text,
             "layers": layers,
             "holes": holes,
             "name": (w.file_list.item(w.file_list.count() - 1).text()
                      if w.file_list.count() else ""),
+            "motion": model["segments"],
+            "preflight": model["warnings"],
         }
 
     @staticmethod
@@ -450,8 +557,8 @@ class CncWebBridge(QObject):
             self.consoleChanged.emit(text)
 
     @Slot(float, float, float, bool)
-    def publishPosition(self, x: float, y: float, z: float, valid: bool) -> None:
-        self.positionChanged.emit(float(x), float(y), float(z), bool(valid))
+    def publishPosition(self, x: float, y: float, z: float, valid: bool, cutting: bool) -> None:
+        self.positionChanged.emit(float(x), float(y), float(z), bool(valid), bool(cutting))
 
     def publishProgram(self) -> None:
         payload = self.buildProgram()
@@ -465,7 +572,7 @@ class CncWebBridge(QObject):
 class LiquidGlassWindow(NativeBackendWindow):
     """Reutiliza la lógica CNC, sustituyendo la interfaz nativa por la plantilla."""
 
-    positionUpdated = Signal(float, float, float, bool)
+    positionUpdated = Signal(float, float, float, bool, bool)
 
     def __init__(self):
         super().__init__()
@@ -505,19 +612,20 @@ class LiquidGlassWindow(NativeBackendWindow):
     def _update_position(self, x, y):
         super()._update_position(x, y)
         if hasattr(self, "web_bridge"):
-            self.positionUpdated.emit(float(x), float(y), float(self.current_z), True)
+            self.positionUpdated.emit(float(x), float(y), float(self.current_z), True, False)
 
-    def _on_sim_position(self, x, y):
+    def _on_sim_position(self, x, y, z=0.0, cutting=False):
         # La interfaz visible la dibuja el visor HTML; no repintar los dos
         # canvases Qt ocultos en cada tick de la simulación.
         self.canvas_2d.current_x = self.canvas_2d.target_x = float(x)
         self.canvas_2d.current_y = self.canvas_2d.target_y = float(y)
         self.canvas_3d.current_x = self.canvas_3d.target_x = float(x)
         self.canvas_3d.current_y = self.canvas_3d.target_y = float(y)
+        self.current_z = float(z)
         self.lbl_x.setText(f"{x:.2f}")
         self.lbl_y.setText(f"{y:.2f}")
         if hasattr(self, "web_bridge"):
-            self.positionUpdated.emit(float(x), float(y), 0.0, True)
+            self.positionUpdated.emit(float(x), float(y), float(z), True, bool(cutting))
 
     def _on_sim_line(self, line_num):
         # Mantener el indicador de línea sin desplazar un editor nativo oculto.

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CNC Project
+Comment=Interfaz CNC Liquid Glass
+Exec=/usr/bin/python3 /home/augus/Documentos/proyecto_cnc/guis/gui_v/main.py
+Path=/home/augus/Documentos/proyecto_cnc/guis/gui_v
+Icon=/home/augus/Documentos/proyecto_cnc/guis/gui_v/cnc-project.svg
+Terminal=false
+Categories=Development;Engineering;
+StartupNotify=true

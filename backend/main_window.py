@@ -36,7 +36,10 @@ def estimate_job_seconds(lines):
     return total
 
 
-JOB_WINDOW = 32
+# Mantener una ventana corta evita llenar la cola USB/planner del STM32.
+# Los G-code de Gerber tienen muchos segmentos pequeños y una ventana de 32
+# puede dejar al firmware sin margen para emitir estado y OK.
+JOB_WINDOW = 8
 
 CONSOLE_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "gui_consola.log"
 
@@ -1203,7 +1206,7 @@ class SimulationController(QObject):
     No interactua con el puerto serie. Solo mueve la herramienta
     visualmente para previsualizar el trabajo.
     """
-    position_changed = Signal(float, float)
+    position_changed = Signal(float, float, float, bool)
     line_changed = Signal(int)
     progress = Signal(int, int)
     finished = Signal()
@@ -1216,6 +1219,7 @@ class SimulationController(QObject):
         self.speed_mm_s = 500.0
         self.running = False
         self.paused = False
+        self.current_cutting = False
         self._last_tick_time = None
 
         self.timer = QTimer(self)
@@ -1234,7 +1238,8 @@ class SimulationController(QObject):
         self._last_tick_time = __import__("time").monotonic()
 
         seg = self.segments[0]
-        self.position_changed.emit(seg[0], seg[1])
+        self.current_cutting = len(seg) > 4 and seg[4] != "rapid"
+        self.position_changed.emit(seg[0], seg[1], seg[6] if len(seg) > 6 else 0.0, self.current_cutting)
         self.line_changed.emit(seg[5] if len(seg) > 5 else 0)
         self.progress.emit(0, len(self.segments))
 
@@ -1261,6 +1266,7 @@ class SimulationController(QObject):
         budget = self.speed_mm_s * dt
         safety = 10000
         position = None
+        position_cutting = False
         latest_line = None
         progress_changed = False
 
@@ -1271,7 +1277,7 @@ class SimulationController(QObject):
                 self.timer.stop()
                 self.running = False
                 if position is not None:
-                    self.position_changed.emit(*position)
+                    self.position_changed.emit(*position, position_cutting)
                 if progress_changed:
                     self.progress.emit(self.current_idx, len(self.segments))
                 self.finished.emit()
@@ -1282,9 +1288,12 @@ class SimulationController(QObject):
             tipo = seg[4] if len(seg) > 4 else "cut"
             line_num = seg[5] if len(seg) > 5 else -1
 
+            z1 = seg[6] if len(seg) > 6 else 0.0
+            z2 = seg[7] if len(seg) > 7 else z1
             dx = x2 - x1
             dy = y2 - y1
-            length = (dx * dx + dy * dy) ** 0.5
+            dz = z2 - z1
+            length = (dx * dx + dy * dy + dz * dz) ** 0.5
 
             if length < 0.001:
                 self.current_idx += 1
@@ -1302,7 +1311,8 @@ class SimulationController(QObject):
                 budget -= remaining_cost
                 self.current_idx += 1
                 self.segment_progress = 0.0
-                position = (x2, y2)
+                position = (x2, y2, z2)
+                position_cutting = tipo != "rapid"
                 progress_changed = True
                 if self.current_idx < len(self.segments):
                     next_seg = self.segments[self.current_idx]
@@ -1312,12 +1322,15 @@ class SimulationController(QObject):
                 self.segment_progress += (budget * speed_factor) / length
                 px = x1 + dx * self.segment_progress
                 py = y1 + dy * self.segment_progress
-                position = (px, py)
+                pz = z1 + dz * self.segment_progress
+                position = (px, py, pz)
+                position_cutting = tipo != "rapid"
                 latest_line = line_num
                 budget = 0.0
 
         if position is not None:
-            self.position_changed.emit(*position)
+            self.current_cutting = position_cutting
+            self.position_changed.emit(*position, position_cutting)
         if latest_line is not None:
             self.line_changed.emit(latest_line)
         if progress_changed:
@@ -1340,6 +1353,7 @@ class MainWindow(QMainWindow):
         self.poll_interval = self.settings.value("poll_interval", 500, type=int)
         self.current_z = 0.0
         self._position_reported = False
+        self._last_position_reported = 0.0
         self._motor_pulse_stats = {
             axis: {"count": 0, "rate": 0.0} for axis in ("X", "Y", "Z")
         }
@@ -1357,6 +1371,7 @@ class MainWindow(QMainWindow):
         self.job_current = 0
         self.job_next = 0
         self._job_pending = collections.deque()
+        self._job_ack_events = collections.deque()
         self.job_total = 0
         self._last_sent_was_job = False
         self._job_start_time = 0.0
@@ -2355,6 +2370,7 @@ class MainWindow(QMainWindow):
         self.fo_label.setText(f"{value}%")
         self.feed_override = value
         if self.connected and self.job_running:
+            self._job_ack_events.append(None)  # ACK de control, no de una línea G-code.
             self._send_cmd(f"M220 S{value}")
 
     # ============================================================
@@ -2421,9 +2437,11 @@ class MainWindow(QMainWindow):
         self._cnc_busy = True
         self._job_seen_busy = False
         self._job_pending = collections.deque()
+        self._job_ack_events = collections.deque([None])
         self.job_total = len(self.job_lines)
         self.job_running = True
-        # Aplicar el override de velocidad (deslizador Feed) a este trabajo.
+        # Aplicar el override antes del G-code; su OK ocupa el primer lugar
+        # de la secuencia FIFO, pero no confirma una línea del programa.
         self._send_cmd(f"M220 S{self.feed_override}")
         self._hold_sleep_inhibit()
         self.job_paused = False
@@ -2458,6 +2476,7 @@ class MainWindow(QMainWindow):
             line = self.job_lines[idx]
             self.job_next += 1
             pend.append(idx)
+            self._job_ack_events.append(idx)
             self.request_send.emit(line)
             if len(pend) == 1:
                 self._arm_ack_watchdog(line, idx)
@@ -2538,6 +2557,16 @@ class MainWindow(QMainWindow):
                 timeouts[index] = min(3_600_000, max(120_000, int((pending_seconds * 1.8 + 15.0) * 1000)))
             elif source.strip().upper().startswith("G4"):
                 timeouts[index] = 120_000
+
+        # Si el firmware está drenando el planner, una línea nueva puede no
+        # recibir OK hasta que terminen movimientos anteriores. El watchdog
+        # de esa línea debe contemplar la ventana completa pendiente, no solo
+        # su longitud local (especialmente con feed override bajo).
+        for index in range(len(lines)):
+            queue_start = max(0, index - JOB_WINDOW + 1)
+            queued_seconds = sum(motion_seconds[queue_start:index + 1])
+            queue_timeout = min(3_600_000, int((queued_seconds * 1.8 + 15.0) * 1000))
+            timeouts[index] = max(timeouts[index], queue_timeout)
         return timeouts
 
     def _arm_ack_watchdog(self, line, line_index=None):
@@ -2628,6 +2657,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_ack_timer"):
             self._ack_timer.stop()
         self._job_pending = collections.deque()
+        self._job_ack_events = collections.deque()
         self._job_wait_motion = False
         self.job_running = False
         self._release_sleep_inhibit()
@@ -2647,6 +2677,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_ack_timer"):
             self._ack_timer.stop()
         self._job_pending = collections.deque()
+        self._job_ack_events = collections.deque()
         self._job_wait_motion = False
         self.job_running = False
         self._release_sleep_inhibit()
@@ -3450,7 +3481,7 @@ class MainWindow(QMainWindow):
             self._limits_auto = False
             self._limits_skip_ok = True
             return
-        if line == "OK" and self._limits_skip_ok and not self.job_running:
+        if line == "OK" and self._limits_skip_ok:
             self._limits_skip_ok = False
             return
         is_pos_response = line.startswith("X:") and "Y:" in line
@@ -3481,6 +3512,13 @@ class MainWindow(QMainWindow):
                 self._set_mode_combo(getattr(self, "_mode_applied", "NORMAL"))
                 return
 
+        if line == "OK" and self.job_running:
+            if self._job_ack_events:
+                ack_event = self._job_ack_events.popleft()
+                if ack_event is not None:
+                    self._on_job_line_ack()
+            return
+
         # El firmware sigue vivo mientras drena su cola: BUSY, ST y POS
         # reinician el timeout de OK. Antes, un planner lleno abortaba el
         # job aunque la maquina seguia moviendose.
@@ -3507,9 +3545,6 @@ class MainWindow(QMainWindow):
         if line.startswith("ERROR:QUEUE_FULL") and self.job_running:
             self._abort_job_on_error("cola del firmware llena: se perderian segmentos")
             return
-        if line == "OK":
-            self._on_job_line_ack()
-
         # POS: posicion en vivo durante el movimiento.
         # El firmware la manda cada 100 ms. No ensuciar el log.
         if line.startswith("POS "):
@@ -3595,6 +3630,7 @@ class MainWindow(QMainWindow):
         # La vista sigue la telemetría del STM32 incluso antes del homing.
         # El permiso para iniciar trabajos sigue dependiendo de _pos_valid/$H.
         self._position_reported = True
+        self._last_position_reported = __import__("time").monotonic()
         self.lbl_x.setText(f"{x:.2f}")
         self.lbl_y.setText(f"{y:.2f}")
         self.canvas_2d.set_position(x, y)
@@ -3774,10 +3810,10 @@ class MainWindow(QMainWindow):
         if self.simulator.running:
             self.simulator.set_speed(speed)
 
-    @Slot(float, float)
-    def _on_sim_position(self, x, y):
+    @Slot(float, float, float, bool)
+    def _on_sim_position(self, x, y, z=0.0, cutting=False):
         self.canvas_2d.set_position_immediate(x, y)
-        self.canvas_3d.set_position_immediate(x, y, 0.0)
+        self.canvas_3d.set_position_immediate(x, y, z)
         self.lbl_x.setText(f"{x:.2f}")
         self.lbl_y.setText(f"{y:.2f}")
 
