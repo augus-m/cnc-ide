@@ -1,0 +1,2558 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>CNC Project - Liquid Glass</title>
+    <style>
+        :root, [data-theme="black"] {
+            --bg-solid: #09090b;
+            --text-main: #ffffff;
+            --text-muted: #8e8e93;
+            --glass-bg: rgba(30, 30, 35, 0.4);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --glass-highlight: rgba(255, 255, 255, 0.3);
+            --widget-bg: rgba(255, 255, 255, 0.05);
+            --apple-red: #FF5F56;
+            --apple-yellow: #FFBD2E;
+            --apple-green: #27C93F;
+            --apple-blue: #0A84FF;
+            --apple-orange: #FF9500;
+            --font-base: 11px;
+        }
+        [data-theme="gray"] {
+            --bg-solid: #1c1c1e; --text-main: #ffffff; --text-muted: #aeaeb2;
+            --glass-bg: rgba(60, 60, 62, 0.5); --glass-border: rgba(255, 255, 255, 0.15);
+            --glass-highlight: rgba(255, 255, 255, 0.4); --widget-bg: rgba(255, 255, 255, 0.08);
+        }
+        [data-theme="white"] {
+            --bg-solid: #e5e5ea; --text-main: #1c1c1e; --text-muted: #636366;
+            --glass-bg: rgba(255, 255, 255, 0.5); --glass-border: rgba(0, 0, 0, 0.1);
+            --glass-highlight: rgba(255, 255, 255, 0.9); --widget-bg: rgba(0, 0, 0, 0.04);
+        }
+        [data-theme="text"] {
+            --bg-solid: #ffffff; --text-main: #000000; --text-muted: #666666;
+            --glass-bg: rgba(255, 255, 255, 0.4); --glass-border: rgba(0, 0, 0, 0.15);
+            --glass-highlight: rgba(255, 255, 255, 0.8); --widget-bg: rgba(0, 0, 0, 0.05);
+        }
+
+        * {
+            box-sizing: border-box; margin: 0; padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            font-size: var(--font-base);
+            color: var(--text-main);
+            user-select: none;
+            transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+        }
+        body {
+            background: var(--bg-solid); height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+            overflow: hidden; position: relative;
+        }
+
+        .bg-container {
+            position: absolute; inset: 0;
+            z-index: 0; overflow: hidden; display: flex; justify-content: center; align-items: center;
+            pointer-events: none;
+        }
+        .bg-text {
+            font-size: 150px; font-weight: 900; white-space: nowrap;
+            letter-spacing: -5px; opacity: 0; transform: rotate(-10deg);
+            transition: opacity 0.5s; color: #000;
+        }
+        [data-theme="text"] .bg-text { opacity: 0.1; }
+
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), inset 0 1px 1px var(--glass-highlight);
+            border-radius: 20px; position: relative; color: var(--text-main);
+        }
+
+        .app-container {
+            width: 100%; height: 100vh; padding: 16px;
+            display: flex; flex-direction: column; gap: 16px;
+            position: relative; z-index: 1;
+        }
+
+        /* ---- TOP BAR ---- */
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; border-radius: 16px; z-index: 10; }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .menu-btn {
+            background: var(--widget-bg); border: 1px solid var(--glass-border);
+            width: 32px; height: 32px; border-radius: 8px; display: flex;
+            justify-content: center; align-items: center; cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+        }
+        .menu-btn:active { transform: scale(0.9); }
+        .menu-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+        .logo-text { font-family: "Palatino Linotype", Georgia, serif; font-size: 16px; letter-spacing: 1.5px; }
+        .view-tabs { display: flex; background: var(--widget-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 3px; }
+        .view-tab { padding: 6px 14px; border-radius: 9px; cursor: pointer; font-weight: 600; color: var(--text-muted); font-size: 11px; transition: all 0.2s; }
+        .view-tab.active { background: var(--text-main); color: var(--bg-solid); }
+
+        .header-right { display: flex; align-items: center; gap: 12px; }
+
+        .status-pill {
+            padding: 6px 12px; border-radius: 10px; font-weight: 600; font-size: 11px;
+            border: 1px solid var(--apple-red); color: var(--apple-red);
+            background: rgba(255, 95, 86, 0.1); cursor: pointer;
+            transition: all 0.3s;
+        }
+        .status-pill.connected {
+            border-color: var(--apple-green); color: var(--apple-green);
+            background: rgba(39, 201, 63, 0.1);
+        }
+
+        .top-btn {
+            background: var(--widget-bg); border: 1px solid var(--glass-border);
+            padding: 6px 12px; border-radius: 10px; cursor: pointer;
+            font-weight: 600; font-size: 11px; transition: all 0.2s; color: var(--text-main);
+        }
+        .top-btn:hover { background: var(--glass-highlight); }
+        .top-btn:active { transform: scale(0.95); }
+
+        .settings-btn {
+            background: var(--widget-bg); border: 1px solid var(--glass-border);
+            width: 32px; height: 32px; border-radius: 8px; display: flex;
+            justify-content: center; align-items: center; cursor: pointer;
+            transition: transform 0.2s, background 0.2s; color: var(--text-muted);
+        }
+        .settings-btn:hover { color: var(--text-main); background: var(--glass-highlight); }
+        .settings-btn:active { transform: scale(0.9); }
+        .settings-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+        .theme-selector { display: flex; gap: 6px; background: var(--widget-bg); padding: 4px; border-radius: 10px; border: 1px solid var(--glass-border); }
+        .theme-dot { width: 16px; height: 16px; border-radius: 50%; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: transform 0.2s; }
+        .theme-dot:hover { transform: scale(1.2); }
+        .theme-dot.black { background: #000; }
+        .theme-dot.gray { background: #1c1c1e; }
+        .theme-dot.white { background: #e5e5ea; }
+        .theme-dot.text { background: #fff; color: #000; display: flex; justify-content: center; align-items: center; font-size: 10px; font-weight: bold; }
+
+        .window-controls { display: flex; gap: 8px; margin-left: 8px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; cursor: pointer; }
+        .dot-close { background: var(--apple-red); }
+        .dot-min { background: var(--apple-yellow); }
+        .dot-max { background: var(--apple-green); }
+
+        /* ---- LAYOUT ---- */
+        .main-layout { flex: 1; display: flex; gap: 16px; overflow: hidden; position: relative; }
+
+        /* ---- SIDEBAR LEFT ---- */
+        .sidebar {
+            position: absolute; top: 0; left: -300px; width: 260px; height: 100%;
+            display: flex; flex-direction: column; gap: 8px; padding: 16px;
+            overflow-y: auto; overscroll-behavior-y: contain; border-radius: 20px;
+            transition: left 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 50;
+            min-height: 0;
+        }
+        .sidebar > :not(.btn-close-sidebar) { flex: 0 0 auto; }
+        .sidebar.active { left: 0; }
+        .sidebar::-webkit-scrollbar { width: 6px; }
+        .sidebar::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 6px; }
+        .btn-close-sidebar {
+            position: absolute; top: 12px; right: 12px; width: 24px; height: 24px;
+            border-radius: 50%; background: var(--widget-bg); border: none;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; color: var(--text-muted); transition: transform 0.3s, color 0.3s;
+        }
+        .btn-close-sidebar:hover { color: var(--text-main); transform: rotate(90deg); }
+
+        .accordion-container { margin-top: 10px; border: 1px solid var(--glass-border); border-radius: 12px; overflow: hidden; background: rgba(0,0,0,0.05); }
+        .accordion-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+        .accordion-header:hover { background: var(--widget-bg); }
+        .accordion-title { display: flex; align-items: center; gap: 8px; }
+        .accordion-title svg { width: 14px; height: 14px; fill: currentColor; }
+        .arrow-icon { width: 10px; height: 10px; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1); fill: currentColor; }
+        .accordion-container.open .arrow-icon { transform: rotate(180deg); }
+        .accordion-content {
+            max-height: 0; overflow: hidden; opacity: 0;
+            transition: max-height 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease;
+            display: flex; flex-direction: column; gap: 2px; padding: 0 8px;
+        }
+        .accordion-container.open .accordion-content { max-height: 400px; opacity: 1; padding-bottom: 8px; }
+
+        .menu-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-weight: 500; cursor: pointer; color: var(--text-muted); transition: all 0.2s; }
+        .menu-item:hover { background: var(--widget-bg); color: var(--text-main); padding-left: 14px; }
+        .menu-item svg { width: 14px; height: 14px; fill: currentColor; }
+
+        /* --- NUEVOS ESTILOS PARA LAS CAPAS --- */
+        .layer-item { padding: 6px 10px; display: flex; align-items: center; gap: 10px; cursor: pointer; border-radius: 8px; transition: all 0.2s; color: var(--text-main); }
+        .layer-item:hover { background: var(--widget-bg); padding-left: 14px; }
+
+        .layer-checkbox {
+            appearance: none;
+            width: 16px; height: 16px;
+            border-radius: 4px;
+            border: 1px solid var(--glass-border);
+            background: rgba(0,0,0,0.2);
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            flex-shrink: 0;
+        }
+        .layer-checkbox:checked {
+            background: var(--text-main);
+            border-color: var(--text-main);
+        }
+        .layer-checkbox:checked::after {
+            content: "✓";
+            position: absolute;
+            color: var(--bg-solid);
+            font-size: 11px;
+            font-weight: bold;
+            left: 50%; top: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .layer-checkbox:active { transform: scale(0.85); }
+
+        .layer-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+        .fcu { background-color: #FF453A; }
+        .bcu { background-color: #0A84FF; }
+        .edge { background-color: #FFD60A; }
+        .fsilks { background-color: #FFFFFF; border: 1px solid #888; }
+        .fmask { background-color: #BF5AF2; }
+        .pth { background-color: #64D2FF; }
+        .npth { background-color: #FF375F; }
+
+        .action-btn { border: 1px solid var(--glass-border); background: var(--widget-bg); padding: 10px; border-radius: 12px; justify-content: flex-start; margin-top: 4px; }
+        .action-btn:hover { background: var(--glass-highlight); }
+
+        .mini-btn-group { display: flex; gap: 6px; margin-top: 6px; padding: 0 4px 4px 4px; }
+        .layer-quick-group { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 4px 0; }
+        .layer-quick-group .mini-btn { padding: 5px 2px; font-size: 9px; }
+        .mini-btn {
+            flex: 1; padding: 6px; border-radius: 8px; font-size: 10px; font-weight: 600;
+            background: var(--widget-bg); border: 1px solid var(--glass-border);
+            color: var(--text-main); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
+            transition: all 0.2s;
+        }
+        .mini-btn:hover { background: var(--glass-highlight); }
+        .mini-btn.danger { color: #FF453A; border-color: rgba(255, 69, 58, 0.3); }
+        .mini-btn.danger:hover { background: rgba(255, 69, 58, 0.15); }
+
+        .segmented-control {
+            display: flex; background: var(--widget-bg); border: 1px solid var(--glass-border);
+            border-radius: 10px; padding: 3px; margin: 0 4px;
+        }
+        .segment {
+            flex: 1; text-align: center; padding: 5px 0; border-radius: 7px;
+            font-size: 10px; font-weight: 600; color: var(--text-muted);
+            cursor: pointer; transition: all 0.2s;
+        }
+        .segment:hover { color: var(--text-main); }
+        .segment.active { background: var(--text-main); color: var(--bg-solid); }
+
+        /* ---- TOGGLE SWITCH ---- */
+        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider-sw {
+            position: absolute; cursor: pointer; inset: 0;
+            background-color: var(--widget-bg); border: 1px solid var(--glass-border);
+            transition: .3s; border-radius: 20px;
+        }
+        .slider-sw:before {
+            position: absolute; content: ""; height: 14px; width: 14px;
+            left: 2px; bottom: 2px; background-color: var(--text-main);
+            transition: .3s cubic-bezier(0.34, 1.56, 0.64, 1); border-radius: 50%;
+        }
+        input:checked + .slider-sw { background-color: var(--apple-green); border-color: var(--apple-green); }
+        input:checked + .slider-sw:before { transform: translateX(14px); background-color: white; }
+
+        /* ---- VISUALIZER & PILLS ---- */
+        .center-panel { flex: 1; display: flex; flex-direction: column; gap: 12px; position: relative; }
+        .visualizer {
+            flex: 1; border-radius: 20px; position: relative; overflow: hidden; border: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            background-image: linear-gradient(var(--glass-border) 1px, transparent 1px), linear-gradient(90deg, var(--glass-border) 1px, transparent 1px);
+            background-size: 40px 40px;
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        /* BOTONES DE SIMULACIÓN (POSICIÓN Y ANIMACIÓN AJUSTADAS) */
+        .action-pills {
+            position: absolute; top: 20px; right: 30px;
+            display: flex; gap: 8px; z-index: 999; /* Z-index muy alto para que siempre sean visibles */
+            opacity: 1 !important; /* Forzar visibilidad */
+            transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+        }
+        .visualizer.simulation-active .action-pills {
+            transform: translateY(150px);
+        }
+
+        /* BURBUJAS DE SIMULACIÓN: salen desde arriba y empujan las píldoras hacia abajo */
+        .simulation-bubbles {
+            position: absolute; top: 20px; right: 30px; z-index: 998;
+            display: flex; flex-direction: column; align-items: flex-end; gap: 12px;
+            pointer-events: none;
+        }
+        .visualizer.simulation-active .simulation-bubbles { pointer-events: auto; }
+        .sim-item {
+            opacity: 0; transform: translateY(-28px) scale(0.85);
+            transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+        }
+        .visualizer.simulation-active .sim-item { opacity: 1; transform: translateY(0) scale(1); }
+        .sim-item:nth-child(1) { transition-delay: 0.03s; }
+        .sim-item:nth-child(2) { transition-delay: 0.06s; }
+        .sim-item:nth-child(3) { transition-delay: 0.09s; }
+        /* al cerrar, sin retraso para que vuelvan juntas con las píldoras */
+        .visualizer:not(.simulation-active) .sim-item { transition-delay: 0s; }
+        /* El control de velocidad queda a la izquierda, fuera de la columna E-Stop. */
+        .simulation-bubbles .sim-item:last-child {
+            position: absolute; top: 0; right: calc(100% + 14px);
+            white-space: nowrap;
+        }
+
+        .bubble-btn {
+            height: 36px; padding: 0 16px; border-radius: 18px;
+            background: var(--glass-bg); backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: center;
+            gap: 8px; cursor: pointer; font-weight: 600; font-size: 11px; color: var(--text-main);
+            transition: transform 0.15s cubic-bezier(0.25, 1, 0.5, 1), background 0.2s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 1px var(--glass-highlight);
+        }
+        .bubble-btn:active { transform: scale(0.92); background: var(--glass-highlight); }
+        .bubble-btn svg { width: 14px; height: 14px; fill: currentColor; }
+        .bubble-slider {
+            height: 36px; padding: 0 16px; border-radius: 18px;
+            background: var(--glass-bg); backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border); display: flex; align-items: center;
+            gap: 10px; font-weight: 600; font-size: 11px; color: var(--text-main);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 1px var(--glass-highlight);
+        }
+        .bubble-slider input[type="range"] { -webkit-appearance: none; appearance: none; width: 100px; background: transparent; cursor: pointer; }
+        .bubble-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%;
+            background: var(--text-main); cursor: pointer; margin-top: -4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        .bubble-slider input[type="range"]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: var(--glass-border); border-radius: 2px; }
+        .bubble-slider input[type="range"]::-moz-range-thumb { height: 12px; width: 12px; border: none; border-radius: 50%; background: var(--text-main); }
+        .bubble-slider input[type="range"]::-moz-range-track { height: 4px; background: var(--glass-border); border-radius: 2px; }
+        .action-pill {
+            height: 34px; padding: 0 14px; border-radius: 17px;
+            background: var(--glass-bg); backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: center;
+            gap: 6px; cursor: pointer; font-weight: 600; font-size: 11px; color: var(--text-main);
+            transition: transform 0.15s, background 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 1px var(--glass-highlight);
+        }
+        .action-pill:active { transform: scale(0.92); }
+        .action-pill svg { width: 14px; height: 14px; fill: currentColor; }
+
+        .pill-start { color: white; background: var(--apple-green); border-color: transparent; }
+        .pill-start:hover { background: #34d94c; }
+        .pill-pause { color: #000; background: var(--apple-yellow); border-color: transparent; }
+        .pill-pause:hover { background: #ffc842; }
+        .pill-stop { color: var(--text-main); background: var(--widget-bg); }
+        .pill-stop:hover { background: var(--glass-highlight); }
+        .pill-estop { color: white; background: var(--apple-red); border-color: transparent; }
+        .pill-estop:hover { background: #ff6b63; }
+
+
+        /* ===== JOG / MÁQUINA / VISORES ===== */
+        .visualizer { background-image: none !important; }
+        .vcanvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; cursor: grab; outline: none; touch-action: none; }
+        .vcanvas.drag { cursor: grabbing; }
+        .jog-bubbles { position: absolute; top: 66px; right: 30px; z-index: 997; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+        .visualizer.jog-active .jog-bubbles { pointer-events: auto; }
+        .visualizer.simulation-active .jog-bubbles { transform: translateY(150px); }
+        .jog-item { opacity: 0; transform: translateX(24px) scale(0.92); transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease; transition-delay: calc(var(--i) * 0.03s); }
+        .visualizer.jog-active .jog-item { opacity: 1; transform: none; }
+        .visualizer:not(.jog-active) .jog-item { transition-delay: 0s; }
+        .jog-bubbles .bubble-btn { min-width: 84px; font-family: monospace; font-size: 12px; }
+        .jog-chip { font-size: 10px; color: var(--text-muted); padding: 2px 10px; }
+        .step-grid, .mach-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 0 2px; }
+        .mach-grid { grid-template-columns: repeat(2, 1fr); }
+        .step-chip, .mach-btn { padding: 6px 4px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--widget-bg); font-size: 10px; font-weight: 600; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .step-chip:hover, .mach-btn:hover { background: var(--glass-highlight); }
+        .step-chip.active { background: var(--text-main); color: var(--bg-solid); border-color: var(--text-main); }
+        .fo-row { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+        .fo-row input[type=range] { flex: 1; accent-color: var(--text-main); }
+        #foLabel { font-family: monospace; width: 38px; text-align: right; }
+
+        /* ÁREA DE DIBUJO Y COORDENADAS */
+        .xy-plane { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+        .axis-line { stroke-width: 1.5; }
+        .axis-x { stroke: #a855f7; opacity: 0.9; } /* Morado para X */
+        .axis-y { stroke: var(--apple-green); opacity: 0.9; } /* Verde para Y */
+        .origin { fill: var(--apple-green); r: 5; }
+        .work-area { fill: none; stroke: var(--apple-green); stroke-width: 1.5; stroke-dasharray: 6,4; opacity: 0.6; }
+
+        .coord-bubble {
+            position: absolute; bottom: 12%; left: 6%;
+            background: rgba(0, 0, 0, 0.6); border: 1px solid var(--apple-green);
+            color: var(--apple-green); padding: 4px 10px; border-radius: 8px;
+            font-family: monospace; font-size: 13px; font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); pointer-events: none;
+            backdrop-filter: blur(10px); z-index: 2;
+        }
+
+        /* BARRA DE ESTADO INFERIOR DEL VISUALIZADOR */
+        .visualizer-statusbar {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 6px 16px; border-radius: 0 0 20px 20px;
+            background: var(--glass-bg); backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border); font-size: 10px; color: var(--text-muted);
+            font-family: monospace; z-index: 10;
+        }
+
+        /* ---- RIGHT SIDEBAR (NUEVO DISEÑO) ---- */
+        .sidebar-right { width: 260px; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 20px; overflow-y: auto; overscroll-behavior-y: contain; }
+        .sidebar-right > * { flex: 0 0 auto; }
+        .sidebar-right::-webkit-scrollbar { width: 6px; }
+        .sidebar-right::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 6px; }
+
+        .widget { padding: 14px; display: flex; flex-direction: column; gap: 6px; background: var(--widget-bg); border-radius: 12px; border: 1px solid var(--glass-border); }
+        .widget-title { font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px; }
+        .data-row { display: flex; justify-content: space-between; font-weight: 500; font-size: 11px; }
+        .val-data { font-family: monospace; font-weight: 600; color: var(--text-muted); }
+        .val-data.red-text { color: var(--apple-red); font-size: 12px; }
+
+        .status-badge {
+            border: 1px solid var(--apple-green); color: var(--apple-green);
+            padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;
+            background: rgba(39, 201, 63, 0.1); letter-spacing: 0.5px;
+        }
+
+        .progress-bar-container { height: 6px; background: rgba(0,0,0,0.2); border-radius: 3px; margin-top: 8px; overflow: hidden; border: 1px solid var(--glass-border); }
+        .progress-bar-fill { height: 100%; width: 0%; background: var(--apple-green); }
+
+        /* ESTILOS PARA LOS CHECKBOXES TRANSPARENTES EN SIDEBAR */
+        .sidebar-toggle {
+            display: flex; align-items: center; gap: 8px; cursor: pointer;
+            padding: 8px 10px; border-radius: 8px; font-size: 11px; font-weight: 500;
+            background: transparent; border: 1px solid transparent;
+            transition: all 0.2s;
+        }
+        .sidebar-toggle:hover { background: rgba(255,255,255,0.05); border-color: var(--glass-border); }
+        .sidebar-toggle input {
+            appearance: none; width: 14px; height: 14px;
+            border: 1px solid var(--glass-border); border-radius: 4px;
+            background: transparent; cursor: pointer; position: relative;
+            transition: all 0.2s;
+        }
+        .sidebar-toggle input:checked { background: var(--text-main); border-color: var(--text-main); }
+        .sidebar-toggle input:checked::after {
+            content: "✓"; position: absolute; color: var(--bg-solid); font-size: 10px;
+            left: 2px; top: -1px; font-weight: bold;
+        }
+
+        /* =========================================================
+           VENTANAS FLOTANTES DEL MONITOR DE MOTORES
+           ========================================================= */
+        .windows-layer { position: fixed; inset: 0; pointer-events: none; z-index: 8000; }
+        .motor-window {
+            position: absolute; pointer-events: auto;
+            display: flex; flex-direction: column; overflow: hidden; padding: 0;
+            resize: both; min-width: 360px; min-height: 250px;
+            max-width: calc(100vw - 24px); max-height: calc(100vh - 24px);
+            border-radius: 20px;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--glass-border), inset 0 1px 1px var(--glass-highlight);
+            animation: windowIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+            transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1), height 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+                        left 0.2s ease, top 0.2s ease,
+                        box-shadow 0.16s ease, opacity 0.18s ease, transform 0.18s ease;
+        }
+        .motor-window::before {
+            content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+            background: linear-gradient(145deg, rgba(255,255,255,0.12), transparent 38%, rgba(255,255,255,0.025));
+            z-index: 0;
+        }
+        .motor-titlebar, .motor-body { position: relative; z-index: 1; }
+        .motor-window.dragging { transition: box-shadow 0.2s ease; }
+        .editor-window { width: min(760px, calc(100vw - 36px)); height: min(580px, calc(100vh - 36px)); min-width: 420px; min-height: 320px; }
+        .editor-window .motor-body { gap: 10px; }
+        .editor-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .editor-toolbar .btn-term { min-width: 76px; }
+        .editor-hint { margin-left: auto; color: var(--text-muted); font-size: 10px; }
+        .gcode-editor {
+            flex: 1; min-height: 0; width: 100%; resize: none; outline: none;
+            border: 1px solid var(--glass-border); border-radius: 14px; padding: 14px;
+            background: rgba(0,0,0,0.28); color: var(--text-main);
+            font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            tab-size: 4; user-select: text; white-space: pre; overflow: auto;
+            box-shadow: inset 0 1px 10px rgba(0,0,0,0.18);
+        }
+        [data-theme="white"] .gcode-editor, [data-theme="text"] .gcode-editor { background: rgba(255,255,255,0.65); }
+        .gcode-editor::placeholder { color: var(--text-muted); }
+        .glass { box-shadow: 0 10px 30px rgba(0,0,0,0.14), inset 0 1px 1px var(--glass-highlight); }
+        .widget, .action-pill, .bubble-btn, .mini-btn, .top-btn, .settings-btn-action {
+            backdrop-filter: blur(18px) saturate(170%); -webkit-backdrop-filter: blur(18px) saturate(170%);
+        }
+        .motor-window.dragging .motor-titlebar { cursor: grabbing; }
+        .motor-window.maximized .motor-titlebar { cursor: default; }
+
+        @keyframes windowIn {
+            from { opacity: 0; transform: translateY(12px) scale(0.94); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .motor-titlebar {
+            display: flex; align-items: center; gap: 12px;
+            flex-direction: row-reverse;
+            padding: 10px 14px; cursor: grab; user-select: none;
+            border-bottom: 1px solid var(--glass-border);
+            background: var(--widget-bg); flex-shrink: 0;
+        }
+
+        .traffic-lights { display: flex; gap: 8px; flex-shrink: 0; }
+        .tl {
+            width: 12px; height: 12px; border-radius: 50%;
+            border: none; cursor: pointer; padding: 0;
+            transition: filter 0.15s, transform 0.1s; position: relative;
+        }
+        .tl:hover { filter: brightness(1.15); }
+        .tl:active { transform: scale(0.88); }
+        .tl-close { background: var(--apple-red); }
+        .tl-min { background: var(--apple-yellow); }
+        .tl-max { background: var(--apple-green); }
+        .tl-spacer { width: 52px; flex-shrink: 0; }
+
+        .motor-tabs {
+            display: flex; gap: 4px; background: var(--widget-bg);
+            padding: 3px; border-radius: 9px; margin: 0 auto;
+            border: 1px solid var(--glass-border);
+        }
+        .motor-tab {
+            padding: 4px 12px; border-radius: 7px; border: none; background: transparent;
+            cursor: pointer; font-weight: 600; font-size: 10px; color: var(--text-muted); transition: all 0.2s;
+        }
+        .motor-tab:hover { color: var(--text-main); }
+        .motor-tab.active { background: var(--text-main); color: var(--bg-solid); }
+
+        .motor-body {
+            flex: 1; min-height: 0; padding: 14px;
+            display: flex; flex-direction: column; overflow: hidden;
+            transition: padding 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .motor-window.minimized .motor-body { padding: 0; overflow: hidden; }
+        .motor-window.minimized .chart-container { display: none; }
+
+        .motor-window .chart-container {
+            flex: 1; min-height: 0; background: rgba(0,0,0,0.1);
+            border-radius: 12px; border: 1px solid var(--glass-border);
+            position: relative; overflow: hidden;
+        }
+        .motor-window canvas { width: 100%; height: 100%; display: block; }
+        .motor-live-stats {
+            align-self: flex-start; display: inline-flex; align-items: center; justify-content: flex-start;
+            flex-wrap: wrap; gap: 3px 9px; width: fit-content; max-width: 100%; min-height: 27px;
+            padding: 3px 8px; border: 1px solid var(--glass-border);
+            border-radius: 8px; background: rgba(0,0,0,.16); font: 10px ui-monospace, monospace;
+        }
+        .motor-live-stats .pulse-count { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+        .motor-live-stats strong { color: var(--apple-green); font-size: 11px; white-space: nowrap; }
+        .motor-live-stats .pulse-link { color: var(--text-muted); font: 9px ui-sans-serif, system-ui, sans-serif; white-space: nowrap; }
+        .motor-live-caption { color: var(--text-muted); font-size: 10px; margin: 0 2px 6px; }
+
+        /* =========================================================
+           VENTANA DE AJUSTES
+           ========================================================= */
+        .settings-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 9999;
+            visibility: hidden; opacity: 0;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .settings-overlay.active { visibility: visible; opacity: 1; }
+
+        .settings-window {
+            width: 620px; height: 520px;
+            display: flex; flex-direction: column;
+            background: var(--glass-bg); backdrop-filter: blur(26px) saturate(165%); -webkit-backdrop-filter: blur(26px) saturate(165%);
+            border: 1px solid var(--glass-border); border-radius: 14px;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.5), inset 0 1px 1px var(--glass-highlight);
+            transform: scale(0.94) translateY(10px); opacity: 0;
+            transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+            overflow: hidden;
+        }
+        .settings-overlay.active .settings-window {
+            transform: scale(1) translateY(0); opacity: 1;
+        }
+
+        .settings-titlebar {
+            display: flex; align-items: center; justify-content: center; position: relative;
+            padding: 12px 16px; border-bottom: 1px solid var(--glass-border);
+            background: rgba(255,255,255,0.02); flex-shrink: 0;
+        }
+        .settings-titlebar .traffic-lights { position: absolute; right: 16px; left: auto; }
+        .settings-titlebar h2 { font-size: 13px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.5px; }
+
+        .settings-content {
+            flex: 1; padding: 20px 24px;
+            display: flex; flex-direction: column; gap: 16px;
+            overflow-y: auto; min-height: 0;
+        }
+        .settings-content::-webkit-scrollbar { width: 6px; }
+        .settings-content::-webkit-scrollbar-thumb { background: var(--widget-bg); border-radius: 3px; }
+
+        .settings-main-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+
+        /* Tabs */
+        .settings-tabs {
+            display: flex; gap: 4px; background: rgba(0,0,0,0.2);
+            border-radius: 8px; padding: 4px; border: 1px solid var(--glass-border);
+            overflow-x: auto; flex-shrink: 0;
+        }
+        .settings-tab {
+            flex: 0 0 auto; padding: 6px 10px; border-radius: 6px;
+            font-size: 10px; font-weight: 600; color: var(--text-muted); white-space: nowrap;
+            cursor: pointer; text-align: center; transition: all 0.2s;
+        }
+        .settings-tab:hover { color: var(--text-main); }
+        .settings-tab.active { background: var(--text-main); color: var(--bg-solid); }
+        .mcp-client-list { display: flex; flex-direction: column; gap: 8px; }
+        .mcp-client-row, .mcp-client-empty {
+            display: flex; justify-content: space-between; align-items: center; gap: 12px;
+            padding: 10px 12px; border: 1px solid var(--glass-border); border-radius: 10px;
+            background: var(--widget-bg); font-size: 11px;
+        }
+        .mcp-client-row span, .mcp-client-empty { color: var(--text-muted); }
+        .mcp-info { color: var(--text-muted); line-height: 1.6; }
+        .mcp-code { padding: 10px; border-radius: 8px; border: 1px solid var(--glass-border); background: rgba(0,0,0,.2); font-family: monospace; user-select: text; }
+        #tab-mcp input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--apple-green); cursor: pointer; }
+
+        /* Tab Contents */
+        .tab-content { display: none; flex-direction: column; gap: 12px; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+        /* Form Groups */
+        .settings-row { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
+        .settings-row label { font-size: 12px; font-weight: 500; }
+        .settings-row-col { display: flex; flex-direction: column; gap: 6px; }
+
+        .settings-input {
+            background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border);
+            color: var(--text-main); padding: 6px 10px; border-radius: 6px;
+            font-size: 11px; width: 180px; outline: none; transition: border-color 0.2s;
+        }
+        .settings-input:focus { border-color: var(--apple-blue); }
+
+        .settings-checkbox-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+        .settings-checkbox-row input[type="checkbox"] {
+            appearance: none; width: 14px; height: 14px;
+            border-radius: 4px; border: 1px solid var(--glass-border);
+            background: rgba(0,0,0,0.2); cursor: pointer; position: relative; transition: all 0.2s;
+        }
+        .settings-checkbox-row input[type="checkbox"]:checked { background: var(--text-main); border-color: var(--text-main); }
+        .settings-checkbox-row input[type="checkbox"]:checked::after {
+            content: "✓"; position: absolute; color: var(--bg-solid); font-size: 10px;
+            left: 2px; top: -1px; font-weight: bold;
+        }
+        .axis-enable-toggle { appearance: none; width: 34px; height: 19px; border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(0,0,0,0.28); cursor: pointer; position: relative; transition: background .18s ease, border-color .18s ease; }
+        .axis-enable-toggle::after { content: ""; position: absolute; width: 13px; height: 13px; left: 2px; top: 2px; border-radius: 50%; background: var(--text-muted); transition: transform .18s ease, background .18s ease; }
+        .axis-enable-toggle:checked { background: var(--apple-blue); border-color: var(--apple-blue); }
+        .axis-enable-toggle:checked::after { transform: translateX(15px); background: white; }
+        [data-axis][hidden] { display: none !important; }
+        .settings-checkbox-row label { font-size: 11px; cursor: pointer; color: var(--text-main); }
+
+        .helper-text { font-size: 10px; color: var(--text-muted); line-height: 1.5; margin-top: 4px; padding-left: 4px;}
+
+        /* Color Picker Input */
+        .color-picker-row { display: flex; align-items: center; justify-content: space-between; }
+        .color-box {
+            width: 180px; height: 24px; border-radius: 6px; border: 1px solid var(--glass-border);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 700; font-family: monospace;
+            color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            cursor: pointer; position: relative; overflow: hidden;
+        }
+        .color-box input[type="color"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+        /* Range Slider */
+        .settings-slider { -webkit-appearance: none; width: 100%; height: 4px; background: rgba(0,0,0,0.3); border-radius: 2px; outline: none; margin-top: 8px; }
+        .settings-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+            background: var(--apple-orange); cursor: pointer;
+        }
+
+        /* Themes Grid */
+        .theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .theme-card {
+            display: flex; align-items: center; gap: 10px; padding: 10px;
+            border: 1px solid var(--glass-border); border-radius: 8px;
+            background: var(--widget-bg); cursor: pointer; transition: all 0.2s;
+        }
+        .theme-card:hover { background: var(--glass-highlight); }
+        .theme-card.active { border-color: var(--apple-blue); background: rgba(10, 132, 255, 0.1); }
+        .theme-preview { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); }
+        .theme-card span { font-size: 11px; font-weight: 600; }
+
+        /* Footer */
+        .settings-footer {
+            padding: 16px 24px; border-top: 1px solid var(--glass-border);
+            display: flex; justify-content: flex-end; gap: 12px;
+            background: rgba(0,0,0,0.1); flex-shrink: 0;
+        }
+        .settings-btn-action {
+            padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
+            cursor: pointer; border: 1px solid transparent; transition: all 0.2s;
+        }
+        .btn-default { background: var(--widget-bg); border-color: var(--glass-border); color: var(--text-main); margin-right: auto; }
+        .btn-default:hover { background: var(--glass-highlight); }
+        .btn-cancel { background: transparent; color: var(--text-main); }
+        .btn-cancel:hover { background: var(--widget-bg); }
+        .btn-save { background: var(--apple-orange); color: white; }
+        .btn-save:hover { background: #ffaa33; }
+
+        /* =========================================================
+           TERMINAL
+           ========================================================= */
+        #lens {
+            position: absolute; bottom: 24px; left: 50%;
+            transform: translateX(-50%);
+            width: 220px; height: 48px; cursor: pointer; outline: none; z-index: 100;
+            border-radius: 24px;
+            transition: width 0.36s cubic-bezier(0.22, 1, 0.36, 1), height 0.36s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.3s ease;
+        }
+        #lens.expanded {
+            width: 650px; height: 380px; cursor: default; border-radius: 28px;
+            transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1), height 0.42s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.3s ease;
+        }
+        .refract, .sheen { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+        .refract { overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+        .warp { position: absolute; inset: 0; filter: url(#lg); transition: filter 0.1s; }
+        #lens.animating .warp { filter: none; }
+        .clone { position: absolute; width: 100vw; height: 100vh; pointer-events: none; }
+        .clone > * { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
+        .dark {
+            position: absolute; inset: 0; pointer-events: none;
+            background: radial-gradient(125% 95% at 50% 105%, transparent 0%, rgba(0,0,0,0.4) 48%, rgba(0,0,0,0.8) 82%);
+            transition: opacity 0.5s;
+        }
+        #lens.expanded .dark {
+            opacity: 0.62;
+            background: linear-gradient(132deg,
+                rgba(0,0,0,0.78) 0%,
+                rgba(35,35,40,0.26) 54%,
+                rgba(255,255,255,0.30) 100%);
+        }
+        .sheen { box-shadow: inset 0 0 0 1px var(--glass-border), inset 0 -2px 3px var(--glass-highlight), inset 0 2px 2px var(--glass-highlight); }
+
+        .bubble-ring {
+            position: absolute; inset: 0; border-radius: inherit;
+            pointer-events: none; opacity: 0; z-index: 6;
+            background: radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,0.28), transparent 62%);
+            box-shadow: inset 0 0 0 1px var(--glass-highlight), 0 12px 50px rgba(255,255,255,0.18);
+        }
+        .bubble-ring.pop { animation: bubblePop 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        @keyframes bubblePop {
+            0%   { opacity: 0;    transform: scale(0.90); filter: blur(0px); }
+            22%  { opacity: 0.85; }
+            100% { opacity: 0;    transform: scale(1.07); filter: blur(10px); }
+        }
+
+        .terminal-label {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%) scale(1);
+            font-weight: 600; font-size: 13px; letter-spacing: 1px; z-index: 5;
+            opacity: 1; pointer-events: none;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+            transition: opacity 0.18s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #lens.expanded .terminal-label { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+
+        .terminal-content {
+            position: absolute; inset: 0; padding: 20px; padding-top: 50px; z-index: 10;
+            display: flex; flex-direction: column;
+            opacity: 0; pointer-events: none;
+            transform: scale(0.96) translateY(6px);
+            transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        #lens.expanded .terminal-content {
+            opacity: 1; pointer-events: auto;
+            transform: scale(1) translateY(0);
+            transition: opacity 0.24s ease 0.08s, transform 0.26s cubic-bezier(0.22, 1, 0.36, 1) 0.04s;
+        }
+        .terminal-header, .terminal-output, .terminal-input-row, .terminal-actions {
+            opacity: 0; transform: translateY(4px);
+            transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        #lens.expanded .terminal-header     { opacity: 1; transform: none; transition-delay: 0.04s; }
+        #lens.expanded .terminal-output     { opacity: 1; transform: none; transition-delay: 0.07s; }
+        #lens.expanded .terminal-input-row  { opacity: 1; transform: none; transition-delay: 0.10s; }
+        #lens.expanded .terminal-actions    { opacity: 1; transform: none; transition-delay: 0.13s; }
+
+        .terminal-header { position: absolute; top: 15px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .terminal-header h3 { font-size: 13px; font-weight: 600; font-family: monospace; }
+        .btn-close-term { background: transparent; border: none; cursor: pointer; color: var(--text-muted); transition: transform 0.2s; }
+        .btn-close-term:hover { transform: rotate(90deg); color: var(--text-main); }
+
+        .terminal-output {
+            flex: 1; background: rgba(0,0,0,0.18); border-radius: 12px; padding: 12px;
+            overflow-y: auto; font-family: monospace; font-size: 11px; color: var(--text-main);
+            margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px;
+            border: 1px solid var(--glass-border); user-select: text; -webkit-user-select: text;
+        }
+        .terminal-output, .terminal-output * { user-select: text !important; -webkit-user-select: text !important; }
+        .terminal-input-row {
+            display: flex; align-items: center; gap: 10px;
+            background: var(--widget-bg); border-radius: 12px; padding: 8px 12px;
+            border: 1px solid var(--glass-border); margin-bottom: 12px;
+        }
+        .terminal-input-row input { flex: 1; background: transparent; border: none; color: var(--text-main); caret-color: var(--apple-blue); font-size: 12px; font-family: monospace; outline: none; user-select: text; -webkit-user-select: text; }
+        .terminal-input-row input::placeholder { color: var(--text-muted); opacity: 1; }
+        .terminal-input-row:focus-within { border-color: var(--apple-blue); box-shadow: 0 0 0 2px rgba(10,132,255,.18); }
+        .terminal-actions { display: flex; justify-content: space-between; align-items: center; }
+        .btn-term {
+            background: var(--widget-bg); border: 1px solid var(--glass-border);
+            color: var(--text-main); padding: 6px 12px; border-radius: 8px;
+            font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+        .btn-term:hover { background: var(--glass-highlight); }
+        .btn-cnc { border: none; color: white; }
+        .btn-start { background: var(--apple-green); }
+        .btn-estop { background: var(--apple-red); }
+
+    </style>
+</head>
+<body>
+
+    <div class="bg-container" id="bg-container">
+        <h1 class="bg-text">LIQUID GLASS REFRACTION</h1>
+    </div>
+
+    <div class="app-container" id="app" data-theme="black">
+
+        <div class="top-bar glass">
+            <div class="header-left">
+                <button class="menu-btn" onclick="toggleSidebar()">
+                    <svg viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                </button>
+                <span class="logo-text">CNC Project</span>
+                <div class="view-tabs">
+                    <div class="view-tab active">Toolpath 2D</div>
+                    <div class="view-tab">Vista 3D</div>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <div class="status-pill" id="connStatus" onclick="toggleConnection()">Desconectado</div>
+                <button class="top-btn" id="btnPolling" onclick="togglePolling()">Polling: ON</button>
+                <button class="top-btn" id="btnConnect" onclick="toggleConnection()">Conectar</button>
+
+                <button class="settings-btn" onclick="openSettings()" title="Ajustes">
+                    <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                </button>
+
+                <div class="theme-selector">
+                    <div class="theme-dot black" onclick="setTheme('black')" title="Negro"></div>
+                    <div class="theme-dot gray" onclick="setTheme('gray')" title="Gris"></div>
+                    <div class="theme-dot white" onclick="setTheme('white')" title="Blanco"></div>
+                    <div class="theme-dot text" onclick="setTheme('text')" title="Texto de prueba">T</div>
+                </div>
+
+                <div class="window-controls">
+                    <div class="dot dot-close"></div>
+                    <div class="dot dot-min"></div>
+                    <div class="dot dot-max"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-layout">
+            <div class="sidebar glass" id="sidebarLeft">
+                <button class="btn-close-sidebar" onclick="toggleSidebar()">✕</button>
+
+                <div class="accordion-container" id="accordionRecent" style="margin-top: 8px;">
+                    <div class="accordion-header" onclick="toggleAccordion('accordionRecent')">
+                        <div class="accordion-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+                            Archivos recientes
+                        </div>
+                        <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+                    <div class="accordion-content" id="cncFileList"></div>
+                </div>
+
+                <div class="accordion-container open" id="accordionLayers">
+                    <div class="accordion-header" onclick="toggleAccordion('accordionLayers')">
+                        <div class="accordion-title">
+                            <svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                            Capas
+                        </div>
+                        <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+                    <div class="accordion-content" style="padding: 4px 8px 8px 8px;">
+                        <label class="layer-item">
+                            <input type="checkbox" class="layer-checkbox" checked>
+                            <span class="layer-dot fcu"></span> F.Cu
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="layer-checkbox" checked>
+                            <span class="layer-dot bcu"></span> B.Cu
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="layer-checkbox" checked>
+                            <span class="layer-dot edge"></span> Edge.Cuts
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="layer-checkbox" checked>
+                            <span class="layer-dot fsilks"></span> F.Silks
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="layer-checkbox" checked>
+                            <span class="layer-dot fmask"></span> F.Mask
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="layer-checkbox" checked>
+                            <span class="layer-dot pth"></span> PTH
+                        </label>
+                        <label class="layer-item">
+                            <input type="checkbox" class="layer-checkbox" checked>
+                            <span class="layer-dot npth"></span> NPTH
+                        </label>
+
+                        <div class="layer-quick-group">
+                            <button class="mini-btn" onclick="showOnlyLayers(null)">Todas</button>
+                            <button class="mini-btn" onclick="showOnlyLayers('F.Cu')">F.Cu</button>
+                            <button class="mini-btn" onclick="showOnlyLayers('B.Cu')">B.Cu</button>
+                            <button class="mini-btn" onclick="showOnlyLayers('Edge.Cuts')">Edge</button>
+                        </div>
+                        <div class="mini-btn-group">
+                            <button class="mini-btn" onclick="alert('Ordenando capas...')">
+                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                                Ordenar
+                            </button>
+                            <button class="mini-btn danger" onclick="alert('Archivos eliminados')">
+                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion-container open" id="accordionFiles">
+                    <div class="accordion-header" onclick="toggleAccordion('accordionFiles')">
+                        <div class="accordion-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            Abrir / Convertir
+                        </div>
+                        <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+                    <div class="accordion-content">
+                        <div class="menu-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
+                            Abrir G-code
+                        </div>
+                        <div class="menu-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                            Convertir SVG
+                        </div>
+                        <div class="menu-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                            Convertir DXF
+                        </div>
+                        <div class="menu-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+                            Convertir Gerber (PCB)
+                        </div>
+                        <div class="menu-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                            Convertir Excellon (drill)
+                        </div>
+                        <div class="menu-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            Guardar G-code
+                        </div>
+                    </div>
+                </div>
+
+                <div class="menu-item action-btn" onclick="toggleSimulation()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Simulación
+                </div>
+                <div class="menu-item action-btn" onclick="toggleJog()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+                    Jog
+                </div>
+                <div class="menu-item action-btn" onclick="openMotorWindow()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    Monitor Motores
+                </div>
+                <div class="menu-item action-btn danger" onclick="alert('Limpiar')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    Limpiar todo
+                </div>
+
+                <div class="accordion-container open" id="accordionFab" style="margin-top: 10px;">
+                    <div class="accordion-header" onclick="toggleAccordion('accordionFab')">
+                        <div class="accordion-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            Fabricación
+                        </div>
+                        <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+                    <div class="accordion-content" style="padding-bottom: 8px; gap: 6px;">
+                        <div class="widget-title" style="margin-left: 8px; margin-top: 4px;">Modos de trabajo</div>
+                        <div class="segmented-control">
+                            <div class="segment active" onclick="setSegment(this)">Normal</div>
+                            <div class="segment" onclick="setSegment(this)">Rápido</div>
+                            <div class="segment" onclick="setSegment(this)">Preciso</div>
+                        </div>
+                        <div class="widget-title" style="margin-left: 8px; margin-top: 8px;">Velocidad</div>
+                        <div class="segmented-control">
+                            <div class="segment" onclick="setSegment(this)">Lento</div>
+                            <div class="segment active" onclick="setSegment(this)">Normal</div>
+                            <div class="segment" onclick="setSegment(this)">Rápido</div>
+                        </div>
+                        <button class="action-btn mini-btn" style="width: 100%; margin: 4px 0 0; color: var(--apple-green);" onclick="orderedFabrication()">
+                            Fabricación ordenada
+                        </button>
+                    </div>
+                </div>
+
+                <div class="accordion-container" id="accordionMachine" style="margin-top: 10px;">
+                    <div class="accordion-header" onclick="toggleAccordion('accordionMachine')">
+                        <div class="accordion-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+                            Máquina
+                        </div>
+                        <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+                    <div class="accordion-content" style="gap: 6px;">
+                        <div class="widget-title" style="margin-left: 8px; margin-top: 4px;">Paso del jog (mm)</div>
+                        <div class="step-grid" id="stepGrid"></div>
+                        <div class="widget-title" style="margin-left: 8px; margin-top: 8px;">Posición</div>
+                        <div class="mach-grid">
+                            <div class="mach-btn" onclick="machineCmd('Home','$H',0,0)">Home</div>
+                            <div class="mach-btn" onclick="machineCmd('Zero aquí','G92 X0 Y0')">Zero aquí</div>
+                            <div class="mach-btn" onclick="machineCmd('Ir a 0,0','G90 G0 X0 Y0',0,0)">Ir a 0,0</div>
+                            <div class="mach-btn" onclick="machineCmd('Origen máquina','G53 G0 X0 Y0',0,0)">Origen máquina</div>
+                        </div>
+                        <div class="widget-title" style="margin-left: 8px; margin-top: 8px;">Feed override</div>
+                        <div class="fo-row"><input type="range" id="foSlider" min="10" max="200" value="100"><span id="foLabel">100%</span></div>
+                    </div>
+                </div>
+
+                <div class="accordion-container" id="accordionEditor" style="margin-top: 10px;">
+                    <div class="accordion-header" onclick="toggleAccordion('accordionEditor')">
+                        <div class="accordion-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+                            Editor G-code
+                        </div>
+                        <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+                    <div class="accordion-content" style="padding-bottom: 8px;">
+                        <button class="mini-btn action-btn" style="width:100%;" onclick="openEditorWindow()">Abrir editor</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="center-panel">
+                <div class="visualizer" id="visualizerCanvas">
+
+                    <!-- BURBUJAS DE SIMULACIÓN (aparecen al pulsar Simulación) -->
+                    <div class="simulation-bubbles">
+                        <div class="sim-item"><div class="bubble-btn" onclick="simAction('Simular')">
+                            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> Simular
+                        </div></div>
+                        <div class="sim-item"><div class="bubble-btn" id="simPauseButton" onclick="simAction('Pausar')">
+                            <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg> Pausar
+                        </div></div>
+                        <div class="sim-item"><div class="bubble-btn" onclick="simAction('Detener simulación')">
+                            <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg> Detener
+                        </div></div>
+                        <div class="sim-item"><div class="bubble-slider">
+                            <span>Velocidad</span>
+                            <input type="range" min="1" max="100" value="50" oninput="updateSpeed(this.value)">
+                        </div></div>
+                    </div>
+
+                    <div class="jog-bubbles" id="jogBubbles"></div>
+
+                    <!-- BOTONES DE SIMULACIÓN (AHORA VISIBLES Y CON ANIMACIÓN) -->
+                    <div class="action-pills">
+                        <div class="action-pill pill-start" onclick="actionBtn('Iniciar')">
+                            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Iniciar
+                        </div>
+                        <div class="action-pill pill-pause" onclick="actionBtn('Pausar')">
+                            <svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pausar
+                        </div>
+                        <div class="action-pill pill-stop" onclick="actionBtn('Detener')">
+                            <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></svg> Detener
+                        </div>
+                        <div class="action-pill pill-estop" onclick="actionBtn('E-Stop')">
+                            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14h-2v-4h2v4zm0-6h-2V6h2v4zm4 6h-2v-4h2v4zm0-6h-2V6h2v4z"/></svg> E-Stop
+                        </div>
+                    </div>
+
+                    <!-- ÁREA DE DIBUJO -->
+                    <canvas id="cv2d" class="vcanvas"></canvas>
+                    <canvas id="cv3d" class="vcanvas" tabindex="0" style="display:none"></canvas>
+
+                    <!-- Coordenadas Flotantes -->
+                    <div class="coord-bubble" id="coordBubble">(0.00, 0.00)</div>
+
+                    <!-- BARRA DE ESTADO INFERIOR -->
+                    <div class="visualizer-statusbar">
+                        <div id="sbL">Zoom: 100% &nbsp;|&nbsp; Pos: (0.00, 0.00)</div>
+                        <div id="sbR">Cursor: (-, -)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SIDEBAR DERECHO -->
+            <div class="sidebar-right glass">
+                <div class="widget" style="margin-top: 10px;">
+                    <div class="widget-title">POSICIÓN ACTUAL</div>
+                    <div class="data-row" data-axis="X"><span>X</span><span class="val-data red-text">0.00</span></div>
+                    <div class="data-row" data-axis="Y"><span>Y</span><span class="val-data red-text">0.00</span></div>
+                    <div class="data-row" data-axis="Z"><span>Z</span><span class="val-data">-</span></div>
+                </div>
+
+                <div class="widget">
+                    <div class="widget-title">ESTADÍSTICAS G-CODE</div>
+                    <div class="data-row"><span>Total lines</span><span class="val-data">-</span></div>
+                    <div class="data-row"><span>G0 rapid</span><span class="val-data">-</span></div>
+                    <div class="data-row"><span>G1 corte</span><span class="val-data">-</span></div>
+                    <div class="data-row"><span>G2/G3 arcos</span><span class="val-data">-</span></div>
+                    <div class="data-row"><span>M-codes</span><span class="val-data">-</span></div>
+                    <div class="data-row"><span>Distancia</span><span class="val-data">-</span></div>
+                    <div class="data-row"><span>Bounds</span><span class="val-data">-</span></div>
+                    <div class="data-row"><span>Boundary</span><span class="val-data">-</span></div>
+                </div>
+
+                <div class="widget">
+                    <div class="widget-title">ESTADO</div>
+                    <div class="data-row" style="margin-top: 4px;">
+                        <span class="status-badge">Listo</span>
+                        <span class="val-data">-</span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill"></div>
+                    </div>
+                </div>
+
+                <div class="widget">
+                    <div class="widget-title">TIEMPO</div>
+                    <div class="data-row"><span>Transcurrido</span><span class="val-data">00:00:00</span></div>
+                    <div class="data-row"><span>Restante</span><span class="val-data">-</span></div>
+                </div>
+
+                <!-- VISUALIZACIÓN CON BOTÓN HOME AÑADIDO -->
+                <div class="widget" style="background: transparent; border: none; padding: 0; margin-top: 8px;">
+                    <div class="widget-title" style="padding-left: 4px;">VISUALIZACIÓN</div>
+                    <label class="sidebar-toggle">
+                        <input type="checkbox"> Ver G0 (rapidos)
+                    </label>
+                    <label class="sidebar-toggle">
+                        <input type="checkbox" checked> Ver G1 (cortes)
+                    </label>
+
+                    <button class="tool-btn" style="width: 100%; margin-top: 8px; padding: 8px; display: flex; justify-content: center; align-items: center; gap: 6px;" onclick="resetViewer()">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                        Home
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VENTANA DE AJUSTES EXTENDIDA -->
+    <div class="settings-overlay" id="settingsModal">
+        <div class="settings-window">
+            <div class="settings-titlebar">
+                <div class="traffic-lights">
+                    <button class="tl tl-close" onclick="closeSettings()"></button>
+                    <button class="tl tl-min" style="pointer-events: none; opacity: 0.5;"></button>
+                    <button class="tl tl-max" style="pointer-events: none; opacity: 0.5;"></button>
+                </div>
+                <h2>Ajustes</h2>
+            </div>
+
+            <div class="settings-content">
+                <div class="settings-main-title">Ajustes de CNC IDE</div>
+
+                <div class="settings-tabs">
+                    <div class="settings-tab active" onclick="setSettingsTab('tab-conexion', this)">Conexion</div>
+                    <div class="settings-tab" onclick="setSettingsTab('tab-maquina', this)">Maquina</div>
+                    <div class="settings-tab" onclick="setSettingsTab('tab-ejes', this)">Ejes</div>
+                    <div class="settings-tab" onclick="setSettingsTab('tab-visor', this)">Visor 2D</div>
+                    <div class="settings-tab" onclick="setSettingsTab('tab-colores', this)">Colores</div>
+                    <div class="settings-tab" onclick="setSettingsTab('tab-consola', this)">Consola</div>
+                    <div class="settings-tab" onclick="setSettingsTab('tab-temas', this)">Temas</div>
+                    <div class="settings-tab" onclick="setSettingsTab('tab-mcp', this)">MCP</div>
+                </div>
+
+                <!-- TAB: CONEXION -->
+                <div id="tab-conexion" class="tab-content active">
+                    <div class="settings-row">
+                        <label>Intervalo de polling (M114):</label>
+                        <input type="text" class="settings-input" value="100 ms">
+                    </div>
+                    <div class="settings-checkbox-row">
+                        <input type="checkbox" id="chkConnect" checked>
+                        <label for="chkConnect">Conectar al ultimo puerto al arrancar</label>
+                    </div>
+                </div>
+
+                <!-- TAB: MAQUINA -->
+                <div id="tab-maquina" class="tab-content">
+                    <div class="settings-row">
+                        <label>Area de trabajo X:</label>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" class="settings-input" value="200.0" style="width: 120px; text-align: right;">
+                            <span style="font-size: 11px; color: var(--text-muted);">mm</span>
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <label>Area de trabajo Y:</label>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" class="settings-input" value="200.0" style="width: 120px; text-align: right;">
+                            <span style="font-size: 11px; color: var(--text-muted);">mm</span>
+                        </div>
+                    </div>
+                    <div class="helper-text">
+                        Estas dimensiones se usan para:<br>
+                        - Dibujar los ejes del visor 2D<br>
+                        - El boundary check del G-code
+                    </div>
+                </div>
+
+                <!-- TAB: EJES -->
+                <div id="tab-ejes" class="tab-content">
+                    <div class="settings-main-title">Ejes de la máquina</div>
+                    <div class="settings-row">
+                        <label for="axisEnableX">Eje X</label>
+                        <input type="checkbox" id="axisEnableX" class="axis-enable-toggle" checked>
+                    </div>
+                    <div class="settings-row">
+                        <label for="axisEnableY">Eje Y</label>
+                        <input type="checkbox" id="axisEnableY" class="axis-enable-toggle" checked>
+                    </div>
+                    <div class="settings-row">
+                        <label for="axisEnableZ">Eje Z</label>
+                        <input type="checkbox" id="axisEnableZ" class="axis-enable-toggle">
+                    </div>
+                    <div class="helper-text">Al activar un eje aparecen sus controles en la interfaz. El firmware STM32 actual controla X/Y; Z requiere añadir su salida de motor en el firmware para moverlo físicamente.</div>
+                </div>
+
+                <!-- TAB: VISOR 2D -->
+                <div id="tab-visor" class="tab-content">
+                    <div class="settings-checkbox-row">
+                        <input type="checkbox" id="chkSmooth" checked>
+                        <label for="chkSmooth">Animacion suave</label>
+                    </div>
+                    <div class="settings-row-col">
+                        <div class="settings-row" style="margin-bottom: 0;">
+                            <label>Velocidad de animacion:</label>
+                            <span style="font-size: 10px; color: var(--text-muted);">15%</span>
+                        </div>
+                        <input type="range" class="settings-slider" min="1" max="100" value="15">
+                    </div>
+                    <div class="settings-checkbox-row" style="margin-top: 10px;">
+                        <input type="checkbox" id="chkGrid" checked>
+                        <label for="chkGrid">Mostrar grid</label>
+                    </div>
+                    <div class="settings-row">
+                        <label>Opacidad del grid:</label>
+                        <input type="text" class="settings-input" value="12 / 255" style="width: 120px; text-align: right;">
+                    </div>
+                    <div class="settings-checkbox-row" style="margin-top: 10px;">
+                        <input type="checkbox" id="chkAxes" checked>
+                        <label for="chkAxes">Mostrar ejes X/Y</label>
+                    </div>
+                    <div class="settings-checkbox-row">
+                        <input type="checkbox" id="chkCoords" checked>
+                        <label for="chkCoords">Mostrar coordenadas junto a la herramienta</label>
+                    </div>
+                </div>
+
+                <!-- TAB: COLORES -->
+                <div id="tab-colores" class="tab-content">
+                    <div class="color-picker-row">
+                        <label>Color de los ejes:</label>
+                        <div class="color-box" style="background: #a855f7;">
+                            #a855f7
+                            <input type="color" value="#a855f7" onchange="updateColorBox(this)">
+                        </div>
+                    </div>
+                    <div class="color-picker-row">
+                        <label>Acento (naranja):</label>
+                        <div class="color-box" style="background: #ff4422;">
+                            #ff4422
+                            <input type="color" value="#ff4422" onchange="updateColorBox(this)">
+                        </div>
+                    </div>
+                    <div class="color-picker-row">
+                        <label>Herramienta / Verde:</label>
+                        <div class="color-box" style="background: #4ade80;">
+                            #4ade80
+                            <input type="color" value="#4ade80" onchange="updateColorBox(this)">
+                        </div>
+                    </div>
+                    <div class="color-picker-row">
+                        <label>Alarma / Rojo:</label>
+                        <div class="color-box" style="background: #ef4444;">
+                            #ef4444
+                            <input type="color" value="#ef4444" onchange="updateColorBox(this)">
+                        </div>
+                    </div>
+                    <div class="color-picker-row">
+                        <label>Fondo:</label>
+                        <div class="color-box" style="background: #0d0e12; border: 1px solid rgba(255,255,255,0.2);">
+                            #0d0e12
+                            <input type="color" value="#0d0e12" onchange="updateColorBox(this)">
+                        </div>
+                    </div>
+                    <div class="color-picker-row">
+                        <label>Texto principal:</label>
+                        <div class="color-box" style="background: #e5e5e5; color: #000; text-shadow: none;">
+                            #e5e5e5
+                            <input type="color" value="#e5e5e5" onchange="updateColorBox(this)">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: CONSOLA -->
+                <div id="tab-consola" class="tab-content">
+                    <div class="settings-checkbox-row">
+                        <input type="checkbox" id="chkAutoscroll" checked>
+                        <label for="chkAutoscroll">Autoscroll al recibir lineas</label>
+                    </div>
+                    <div class="settings-checkbox-row">
+                        <input type="checkbox" id="chkTimestamps" checked>
+                        <label for="chkTimestamps">Mostrar timestamps</label>
+                    </div>
+                    <div class="settings-checkbox-row">
+                        <input type="checkbox" id="chkEcho" checked>
+                        <label for="chkEcho">Eco de comandos enviados</label>
+                    </div>
+                </div>
+
+                <!-- TAB: TEMAS -->
+                <div id="tab-temas" class="tab-content">
+                    <div class="settings-row">
+                        <label>Tema de la interfaz:</label>
+                    </div>
+                    <div class="theme-grid">
+                        <div class="theme-card active" onclick="setTheme('black'); document.querySelectorAll('.theme-card').forEach(c=>c.classList.remove('active')); this.classList.add('active');">
+                            <div class="theme-preview" style="background: #000;"></div>
+                            <span>Negro</span>
+                        </div>
+                        <div class="theme-card" onclick="setTheme('gray'); document.querySelectorAll('.theme-card').forEach(c=>c.classList.remove('active')); this.classList.add('active');">
+                            <div class="theme-preview" style="background: #1c1c1e;"></div>
+                            <span>Gris</span>
+                        </div>
+                        <div class="theme-card" onclick="setTheme('white'); document.querySelectorAll('.theme-card').forEach(c=>c.classList.remove('active')); this.classList.add('active');">
+                            <div class="theme-preview" style="background: #e5e5ea;"></div>
+                            <span>Blanco</span>
+                        </div>
+                        <div class="theme-card" onclick="setTheme('text'); document.querySelectorAll('.theme-card').forEach(c=>c.classList.remove('active')); this.classList.add('active');">
+                            <div class="theme-preview" style="background: #fff; display:flex; align-items:center; justify-content:center; font-size:8px; color:#000; font-weight:bold;">T</div>
+                            <span>Texto (T)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: MCP -->
+                <div id="tab-mcp" class="tab-content">
+                    <div class="settings-main-title">Conexiones MCP</div>
+                    <div class="mcp-info">Las IA registradas aquí pueden consultar la terminal y el estado del STM32. Las herramientas de escritura exigen activar el permiso y confirmar cada acción.</div>
+                    <div class="settings-row">
+                        <label for="mcpWriteEnabled">Permitir control remoto desde MCP</label>
+                        <input type="checkbox" id="mcpWriteEnabled">
+                    </div>
+                    <div class="helper-text">Si está desactivado, MCP solo puede leer. Para mover ejes o enviar comandos, cada solicitud también debe incluir confirm=true.</div>
+                    <div class="settings-row"><strong>Clientes conectados</strong><span id="mcpClientStatus" class="status-badge">Sin clientes conectados</span></div>
+                    <div id="mcpClientList" class="mcp-client-list"><div class="mcp-client-empty">No hay clientes MCP conectados</div></div>
+                    <div class="mcp-info">Servidor local por stdio: <span class="mcp-code">gui_v/mcp_server.py</span></div>
+                    <div class="helper-text">Registra este servidor en la configuración MCP de cada IA. Define CNC_MCP_CLIENT (por ejemplo, Codex o Claude) para identificarla en esta lista. Guarda los cambios para aplicar el permiso de escritura.</div>
+                </div>
+
+            </div>
+
+            <div class="settings-footer">
+                <button class="settings-btn-action btn-default" onclick="resetSettings()">Restaurar por defecto</button>
+                <button class="settings-btn-action btn-cancel" onclick="closeSettings()">Cancelar</button>
+                <button class="settings-btn-action btn-save" onclick="saveSettings()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CAPA DE VENTANAS FLOTANTES -->
+    <div class="windows-layer" id="windowsLayer"></div>
+
+    <!-- TERMINAL -->
+    <div id="lens" role="region" tabindex="-1">
+        <div class="refract" id="refract-container">
+            <div class="warp"><div class="clone" id="clone"></div></div>
+            <div class="dark"></div>
+        </div>
+        <div class="sheen"></div>
+        <div class="bubble-ring"></div>
+        <div class="terminal-label">Terminal</div>
+        <div class="terminal-content" onclick="event.stopPropagation()">
+            <div class="terminal-header">
+                <h3>Terminal CNC</h3>
+                <button class="btn-close-term" onclick="toggleTerminal()">✕</button>
+            </div>
+            <div class="terminal-output" id="terminalOutput" tabindex="0">
+                <div class="term-line">[23:15:10] &lt;- ERROR: QUEUE_FULL</div>
+                <div class="term-line success">[23:15:18] &lt;- HOME_OK X=0 Y=0</div>
+            </div>
+            <div class="terminal-input-row">
+                <input type="text" placeholder="Escribe un comando..." id="cmdInput" onkeypress="handleEnter(event)">
+                <button class="btn-term" onclick="sendCommand(event)">Enviar</button>
+            </div>
+            <div class="terminal-actions">
+                <div class="btn-group">
+                    <button class="btn-term" onclick="selectTerminalOutput()">Seleccionar todo</button>
+                    <button class="btn-term" onclick="copyTerminalOutput()">Copiar</button>
+                    <button class="btn-term" onclick="clearTerminalOutput()">Limpiar</button>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-term btn-cnc btn-start" onclick="sendCommand(null, 'G0 X10 Y10')">Iniciar</button>
+                    <button class="btn-term btn-cnc btn-estop" onclick="sendCommand(null, 'M112')">E-Stop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FILTROS SVG -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <filter id="lg" x="-20%" y="-20%" width="140%" height="140%" filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">
+            <feImage id="map" x="0" y="0" width="100%" height="100%" preserveAspectRatio="none" result="m"/>
+            <feDisplacementMap id="disp" in="SourceGraphic" in2="m" scale="25" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+        <filter id="lg-drag" x="-20%" y="-20%" width="140%" height="140%" filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">
+        </filter>
+    </svg>
+
+    <script>
+        /* ============================================================
+           1) REFERENCIAS DOM
+           ============================================================ */
+        const bgContainer  = document.getElementById('bg-container');
+        const clone        = document.getElementById('clone');
+        const mapImg       = document.getElementById('map');
+        const dispMap      = document.getElementById('disp');
+        const lens         = document.getElementById('lens');
+        const bubbleRing   = document.querySelector('.bubble-ring');
+        const input        = document.getElementById('cmdInput');
+        const outputDiv    = document.getElementById('terminalOutput');
+        const windowsLayer = document.getElementById('windowsLayer');
+        const settingsModal = document.getElementById('settingsModal');
+        const connStatus   = document.getElementById('connStatus');
+        const btnConnect   = document.getElementById('btnConnect');
+        const btnPolling   = document.getElementById('btnPolling');
+
+        /* ============================================================
+           2) ESTADO
+           ============================================================ */
+        let termTimer = null;
+        let windowCounter = 0;
+        let zCounter = 8000;
+        let activeWindow = null;
+        const motorPulseHistory = { X: [], Y: [], Z: [] };
+        let latestMotorPulseState = { stats: {}, telemetryAvailable: false, connected: false };
+
+        let isConnected = false;
+        let isPolling = true;
+        const commandHistory = [];
+        let commandHistoryIndex = 0;
+        let editorDraft = '';
+
+        /* ============================================================
+           3) CONEXIÓN & POLLING
+           ============================================================ */
+        function toggleConnection() {
+            isConnected = !isConnected;
+            if (isConnected) {
+                connStatus.textContent = "Conectado";
+                connStatus.classList.add('connected');
+                btnConnect.textContent = "Desconectar";
+                if (!lens.classList.contains('expanded')) toggleTerminal();
+                setTimeout(() => addLog('>> Maquina conectada en /dev/ttyUSB0', 'success'), 300);
+            } else {
+                connStatus.textContent = "Desconectado";
+                connStatus.classList.remove('connected');
+                btnConnect.textContent = "Conectar";
+                if (!lens.classList.contains('expanded')) toggleTerminal();
+                setTimeout(() => addLog('>> Maquina desconectada', ''), 300);
+            }
+        }
+
+        function togglePolling() {
+            isPolling = !isPolling;
+            btnPolling.textContent = `Polling: ${isPolling ? 'ON' : 'OFF'}`;
+            if (!lens.classList.contains('expanded')) toggleTerminal();
+            setTimeout(() => addLog(`> Polling M114: ${isPolling ? 'Activado' : 'Desactivado'}`), 300);
+        }
+
+        /* ============================================================
+           4) TEMA / UI / SEGMENTOS
+           ============================================================ */
+        function setTheme(theme) {
+            document.getElementById('app').setAttribute('data-theme', theme);
+            document.body.style.background = getComputedStyle(document.getElementById('app')).getPropertyValue('--bg-solid');
+            updateClones();
+            document.querySelectorAll('.motor-window').forEach(win => resizeCanvas(win));
+        }
+
+        function setSegment(el) {
+            const parent = el.parentElement;
+            parent.querySelectorAll('.segment').forEach(s => s.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function toggleSidebar()     { document.getElementById('sidebarLeft').classList.toggle('active'); }
+        function showOnlyLayers(only) {
+            const names = ['F.Cu','B.Cu','Edge.Cuts','F.SilkS','F.Mask','PTH','NPTH'];
+            document.querySelectorAll('.layer-checkbox').forEach((cb, i) => {
+                cb.checked = only === null || names[i] === only;
+                cb.dispatchEvent(new Event('change'));
+            });
+        }
+        function resetViewer() {
+            if (window.viewerAPI) { window.viewerAPI.reset2(); window.viewerAPI.reset3(); }
+        }
+        function toggleAccordion(id) { document.getElementById(id).classList.toggle('open'); }
+        function toggleSimulation()  { document.getElementById('visualizerCanvas').classList.toggle('simulation-active'); }
+        function updateSpeed(val)    { console.log("Slider Velocidad: " + val + "%"); }
+        function simAction(name) {
+            if (!lens.classList.contains('expanded')) toggleTerminal();
+            setTimeout(() => addLog(`> [SIM] ${name.toUpperCase()}`, 'success'), 300);
+        }
+
+        /* ============================================================
+           5) AJUSTES (SETTINGS)
+           ============================================================ */
+        function openSettings() { settingsModal.classList.add('active'); }
+        function closeSettings() { settingsModal.classList.remove('active'); }
+
+        function setSettingsTab(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.settings-tab').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            btn.classList.add('active');
+        }
+
+        function updateColorBox(input) {
+            const box = input.parentElement;
+            const newColor = input.value;
+            box.style.background = newColor;
+            box.style.color = (newColor === '#0d0e12' || newColor === '#e5e5e5') ? 'white' : 'black';
+            if (newColor === '#e5e5e5') { box.style.color = '#000'; box.style.textShadow = 'none'; }
+            else if (newColor === '#0d0e12') { box.style.color = '#fff'; box.style.textShadow = '0 1px 2px rgba(0,0,0,0.5)'; }
+            box.childNodes[0].nodeValue = newColor;
+        }
+
+        function resetSettings() {
+            document.querySelectorAll('.settings-input').forEach(i => i.value = i.defaultValue || '');
+            document.querySelectorAll('.settings-checkbox-row input[type="checkbox"]').forEach(c => c.checked = true);
+            $('axisEnableX').checked = true; $('axisEnableY').checked = true; $('axisEnableZ').checked = false;
+            window.setEnabledAxesUI?.({X:true,Y:true,Z:false});
+            addLog('> Ajustes restaurados por defecto', 'success');
+        }
+
+        function saveSettings() {
+            addLog(`> Ajustes guardados correctamente`, 'success');
+            closeSettings();
+            if (!lens.classList.contains('expanded')) toggleTerminal();
+        }
+
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) closeSettings();
+        });
+
+        /* ============================================================
+           6) FABRICACIÓN Y ACCIONES CNC
+           ============================================================ */
+        function orderedFabrication() {
+            if (!lens.classList.contains('expanded')) toggleTerminal();
+            setTimeout(() => {
+                addLog('> Fabricación ordenada solicitada', 'success');
+                addLog('  Orden de capas: F.Cu → B.Cu → taladros → otras → Edge.Cuts', '');
+                addLog('  La maqueta está lista para conectar esta acción con la GUI CNC.', '');
+            }, 300);
+        }
+
+        function actionBtn(action) {
+            if (!lens.classList.contains('expanded')) toggleTerminal();
+            setTimeout(() => {
+                let type = 'success';
+                if (action === 'E-Stop') type = '';
+                if (action === 'Pausar') type = '';
+                addLog(`> [CMD] ${action.toUpperCase()}`, type);
+            }, 300);
+
+            if (action === 'E-Stop') {
+                document.body.style.animation = 'none';
+                setTimeout(() => document.body.style.animation = '', 50);
+                let flash = document.createElement('div');
+                flash.style.position = 'fixed'; flash.style.inset = '0';
+                flash.style.background = 'rgba(255, 69, 58, 0.15)';
+                flash.style.zIndex = '9999'; flash.style.pointerEvents = 'none';
+                flash.style.transition = 'opacity 0.4s ease';
+                document.body.appendChild(flash);
+                setTimeout(() => { flash.style.opacity = '0'; setTimeout(()=>flash.remove(), 400); }, 100);
+            }
+        }
+
+        /* ============================================================
+           7) REFRACCIÓN SVG
+           ============================================================ */
+        function generateMap(w, h, r, bezel, scale) {
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            const c2d = c.getContext('2d');
+            const imgData = c2d.createImageData(w, h);
+            const data = imgData.data;
+            for (let py = 0; py < h; py++) {
+                for (let px = 0; px < w; px++) {
+                    const cx = Math.min(Math.max(px + 0.5, r), w - r);
+                    const cy = Math.min(Math.max(py + 0.5, r), h - r);
+                    const dx = px + 0.5 - cx;
+                    const dy = py + 0.5 - cy;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    let mag = 0, nx = 0, ny = 0;
+                    if (dist > 1e-6) {
+                        const t = Math.min(Math.max(1 - (r - dist) / bezel, 0), 1);
+                        mag = Math.pow(t, 2.5);
+                        nx = dx / dist; ny = dy / dist;
+                    }
+                    const i = (py * w + px) * 4;
+                    data[i]     = Math.round(128 - 127 * nx * mag);
+                    data[i + 1] = Math.round(128 - 127 * ny * mag);
+                    data[i + 2] = 128;
+                    data[i + 3] = 255;
+                }
+            }
+            c2d.putImageData(imgData, 0, 0);
+            const targetMap  = mapImg;
+            const targetDisp = dispMap;
+            targetDisp.setAttribute('scale', scale);
+            const url = c.toDataURL();
+            targetMap.setAttribute('href', url);
+            targetMap.setAttributeNS('http://www.w3.org/1999/xlink', 'href', url);
+        }
+
+        function updateClones() {
+            clone.innerHTML = '';
+            const bgClone1 = bgContainer.cloneNode(true); bgClone1.removeAttribute('id'); clone.appendChild(bgClone1);
+        }
+
+        /* ============================================================
+           8) TERMINAL
+           ============================================================ */
+        function popBubbleRing() {
+            bubbleRing.classList.remove('pop');
+            void bubbleRing.offsetWidth;
+            bubbleRing.classList.add('pop');
+        }
+
+        function toggleTerminal() {
+            const opening = !lens.classList.contains('expanded');
+            lens.classList.add('animating');
+            popBubbleRing();
+            clearTimeout(termTimer);
+            if (opening) {
+                lens.classList.add('expanded');
+                termTimer = setTimeout(() => {
+                    generateMap(325, 190, 28, 30, 40);
+                    lens.classList.remove('animating');
+                    document.getElementById('cmdInput').focus();
+                }, 440);
+            } else {
+                lens.classList.remove('expanded');
+                termTimer = setTimeout(() => {
+                    generateMap(220, 48, 24, 15, 25);
+                    lens.classList.remove('animating');
+                }, 380);
+            }
+        }
+
+        function addLog(msg, type = '') {
+            const line = document.createElement('div');
+            line.className = `term-line ${type}`;
+            if (msg.includes('[')) line.innerText = msg;
+            else line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            outputDiv.appendChild(line);
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+        function sendCommand(e, presetCmd = null) {
+            if (e) e.stopPropagation();
+            const cmd = presetCmd || input.value.trim();
+            if (window.cncBridgeReady && window.cncBridge) {
+                if (cmd !== "") {
+                    if (commandHistory[commandHistory.length - 1] !== cmd) commandHistory.push(cmd);
+                    commandHistoryIndex = commandHistory.length;
+                    window.cncBridge.sendCommand(cmd);
+                    input.value = "";
+                }
+                return;
+            }
+            if (cmd !== "") {
+                if (commandHistory[commandHistory.length - 1] !== cmd) commandHistory.push(cmd);
+                commandHistoryIndex = commandHistory.length;
+                addLog(`> ${cmd}`);
+                setTimeout(() => addLog(`ok`, "success"), 300);
+                input.value = "";
+            }
+        }
+        function handleEnter(e) { if (e.key === 'Enter') sendCommand(e); }
+        function selectTerminalOutput() {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(outputDiv);
+            selection.removeAllRanges(); selection.addRange(range);
+            outputDiv.focus({preventScroll:true});
+        }
+        async function copyTerminalOutput() {
+            const value = outputDiv.innerText;
+            try { await navigator.clipboard.writeText(value); }
+            catch (_) {
+                const temp = document.createElement('textarea'); temp.value = value;
+                document.body.appendChild(temp); temp.select(); document.execCommand('copy'); temp.remove();
+            }
+            addLog('> Consola copiada', 'success');
+        }
+        function clearTerminalOutput() { outputDiv.innerHTML = ''; }
+        input.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!commandHistory.length) return;
+                commandHistoryIndex = e.key === 'ArrowUp'
+                    ? Math.max(0, commandHistoryIndex - 1)
+                    : Math.min(commandHistory.length, commandHistoryIndex + 1);
+                input.value = commandHistory[commandHistoryIndex] || '';
+                input.setSelectionRange(input.value.length, input.value.length);
+            }
+        });
+
+        /* ============================================================
+           10) MOTOR WINDOWS
+           ============================================================ */
+        function drawGraphOnCanvas(canvas, motor) {
+            const ctx = canvas.getContext('2d');
+            const w = canvas.clientWidth || canvas.width;
+            const h = canvas.clientHeight || canvas.height;
+            if (w <= 0 || h <= 0) return;
+            const dpr = window.devicePixelRatio || 1;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            const theme = document.getElementById('app').getAttribute('data-theme');
+            const isDark = theme !== 'white' && theme !== 'text';
+            const history = motorPulseHistory[motor] || [];
+            const color = motor === 'X' ? '#a855f7' : motor === 'Y' ? '#27C93F' : '#0A84FF';
+            const latestRate = history.length ? history[history.length - 1].rate : 0;
+            const peak = Math.max(1, ...history.map(sample => sample.rate));
+            /* Evita que una señal casi nula se amplifique hasta llenar el
+             * gráfico: el rango base representa 0–2000 pulsos por segundo. */
+            const roughStep = Math.max(250, peak * 1.15 / 4);
+            const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
+            const scaled = roughStep / magnitude;
+            const step = (scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 5 ? 5 : 10) * magnitude;
+            const maxRate = Math.max(2000, step * 4);
+            const left = 58, right = w - 14, top = 27, bottom = h - 34;
+            const plotW = Math.max(1, right - left), plotH = Math.max(1, bottom - top);
+            const grid = isDark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.12)';
+            const text = isDark ? 'rgba(255,255,255,.66)' : 'rgba(0,0,0,.62)';
+
+            ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 4; i++) {
+                const value = maxRate * i / 4;
+                const y = bottom - plotH * i / 4;
+                ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y);
+                ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.stroke();
+                ctx.fillStyle = text;
+                ctx.fillText(String(Math.round(value)), left - 7, y);
+            }
+            ctx.textAlign = 'center';
+            const spanSeconds = Math.max(0.1, (history.length - 1) * 0.1);
+            for (let i = 0; i <= 4; i++) {
+                const x = left + plotW * i / 4;
+                ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom);
+                ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.stroke();
+                const secondsAgo = spanSeconds * (1 - i / 4);
+                const label = secondsAgo < 1
+                    ? (i === 4 ? '0 ms' : `-${Math.round(secondsAgo * 1000)} ms`)
+                    : (i === 4 ? '0 s' : `-${secondsAgo.toFixed(1)} s`);
+                ctx.fillStyle = text;
+                ctx.fillText(label, x, bottom + 17);
+            }
+            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+            ctx.fillStyle = text; ctx.fillText('Hz', 8, top + 3);
+            ctx.fillStyle = color;
+            ctx.fillText(`${motor} · STEP/s   ${Math.round(latestRate)} Hz`, left, 15);
+
+            if (history.length) {
+                ctx.beginPath();
+                history.forEach((sample, index) => {
+                    const x = history.length === 1 ? right : left + plotW * index / (history.length - 1);
+                    const y = bottom - plotH * Math.max(0, sample.rate) / maxRate;
+                    if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                });
+                ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+        }
+
+        window.setMotorPulseTelemetry = (stats, telemetryAvailable, connected, recordSample = false) => {
+            latestMotorPulseState = { stats, telemetryAvailable, connected };
+            if (recordSample || (telemetryAvailable && !motorPulseHistory.X.length)) {
+                ['X', 'Y', 'Z'].forEach(axis => {
+                    const value = stats?.[axis] || { count: 0, rate: 0 };
+                    const sample = { count: Number(value.count) || 0, rate: Number(value.rate) || 0 };
+                    const history = motorPulseHistory[axis];
+                    history.push(sample);
+                    if (history.length > 120) history.shift();
+                });
+            }
+            document.querySelectorAll('.motor-window:not(.editor-window)').forEach(win => {
+                const axis = win.dataset.motor || 'X';
+                const value = stats?.[axis] || { count: 0, rate: 0 };
+                const count = win.querySelector('.pulse-count');
+                const rate = win.querySelector('.pulse-rate');
+                const link = win.querySelector('.pulse-link');
+                const totalPulses = Math.max(0, Number(value.count) || 0);
+                const compactCount = totalPulses >= 1_000_000
+                    ? `${(totalPulses / 1_000_000).toFixed(1)} M`
+                    : totalPulses >= 10_000 ? `${(totalPulses / 1_000).toFixed(1)} k`
+                    : totalPulses.toLocaleString();
+                if (count) {
+                    count.textContent = axis === 'Z' ? 'Sin salida STEP Z' : `STEP ${compactCount}`;
+                    count.title = axis === 'Z' ? 'El firmware actual no tiene salida STEP para Z' : `Pulsos acumulados: ${totalPulses.toLocaleString()}`;
+                }
+                if (rate) rate.textContent = axis === 'Z' ? '—' : `${(Number(value.rate) || 0).toFixed(0)} Hz`;
+                if (link) link.textContent = !connected ? 'Desconectado' : telemetryAvailable ? 'STM32 · en vivo' : 'Esperando STM32';
+                const canvas = win.querySelector('canvas');
+                if (canvas) drawGraphOnCanvas(canvas, axis);
+            });
+        };
+
+        function resizeCanvas(win) {
+            const canvas = win.querySelector('canvas');
+            if (!canvas) return;
+            const parent = canvas.parentElement;
+            const w = parent.clientWidth;
+            const h = parent.clientHeight;
+            if (w > 0 && h > 0) {
+                const dpr = window.devicePixelRatio || 1;
+                const pixelWidth = Math.round(w * dpr), pixelHeight = Math.round(h * dpr);
+                if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+                    canvas.width = pixelWidth;
+                    canvas.height = pixelHeight;
+                }
+                drawGraphOnCanvas(canvas, win.dataset.motor || 'X');
+            }
+        }
+
+        function toggleMinimize(win) {
+            if (win.classList.contains('minimized')) {
+                win.classList.remove('minimized');
+                win.style.height = win._preMinHeight || '340px';
+            } else {
+                win._preMinHeight = win.style.height || (win.offsetHeight + 'px');
+                const tb = win.querySelector('.motor-titlebar');
+                win.style.height = tb.offsetHeight + 'px';
+                win.classList.add('minimized');
+            }
+            setTimeout(() => resizeCanvas(win), 460);
+        }
+
+        function toggleMaximize(win) {
+            if (win.classList.contains('maximized')) {
+                win.classList.remove('maximized');
+                if (win._savedBounds) {
+                    win.style.left   = win._savedBounds.left;
+                    win.style.top    = win._savedBounds.top;
+                    win.style.width  = win._savedBounds.width;
+                    win.style.height = win._savedBounds.height;
+                }
+                win._savedBounds = null;
+            } else {
+                win._savedBounds = { left: win.style.left, top: win.style.top, width: win.style.width, height: win.style.height };
+                win.classList.add('maximized');
+                win.style.left   = '16px';
+                win.style.top    = '16px';
+                win.style.width  = 'calc(100vw - 32px)';
+                win.style.height = 'calc(100vh - 32px)';
+            }
+            setTimeout(() => resizeCanvas(win), 460);
+        }
+
+        function openEditorWindow() {
+            const existing = document.querySelector('.editor-window');
+            if (existing) { existing.style.zIndex = ++zCounter; activeWindow = existing; return existing; }
+            windowCounter++;
+            const win = document.createElement('div');
+            win.className = 'motor-window editor-window glass';
+            const offset = (windowCounter - 1) % 6;
+            win.style.left = (110 + offset * 28) + 'px';
+            win.style.top = (65 + offset * 24) + 'px';
+            win.style.zIndex = ++zCounter;
+            win.innerHTML = `
+                <div class="motor-titlebar">
+                    <div class="traffic-lights">
+                        <button class="tl tl-close" aria-label="Cerrar"></button>
+                        <button class="tl tl-min" aria-label="Minimizar"></button>
+                        <button class="tl tl-max" aria-label="Maximizar"></button>
+                    </div>
+                    <div class="motor-tabs"><span class="motor-tab active">Editor G-code</span></div>
+                    <div class="tl-spacer"></div>
+                </div>
+                <div class="motor-body">
+                    <div class="editor-toolbar">
+                        <button class="btn-term" data-editor-action="copy">Copiar</button>
+                        <button class="btn-term" data-editor-action="paste">Pegar</button>
+                        <button class="btn-term" data-editor-action="select">Seleccionar todo</button>
+                        <button class="btn-term" data-editor-action="preview">Actualizar vista</button>
+                        <button class="btn-term" data-editor-action="save">Guardar G-code</button>
+                        <span class="editor-hint">Ctrl/Cmd+C · V · X · Z · Y · A</span>
+                    </div>
+                    <textarea class="gcode-editor" spellcheck="false" aria-label="Editor de G-code" placeholder="Escribe o pega aquí el G-code…"></textarea>
+                </div>`;
+            windowsLayer.appendChild(win);
+            activeWindow = win;
+            const editor = win.querySelector('.gcode-editor');
+            editor.value = editorDraft;
+            editor.addEventListener('input', () => { editorDraft = editor.value; });
+            win.querySelector('[data-editor-action="copy"]').onclick = async () => {
+                editor.focus();
+                const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd);
+                const value = selected || editor.value;
+                try { await navigator.clipboard.writeText(value); }
+                catch (_) {
+                    const a = editor.selectionStart, b = editor.selectionEnd;
+                    if (!selected) editor.select();
+                    document.execCommand('copy');
+                    editor.setSelectionRange(a, b);
+                }
+            };
+            win.querySelector('[data-editor-action="paste"]').onclick = async () => {
+                editor.focus();
+                try {
+                    const clip = await navigator.clipboard.readText();
+                    const a = editor.selectionStart, b = editor.selectionEnd;
+                    editor.setRangeText(clip, a, b, 'end'); editorDraft = editor.value;
+                } catch (_) {
+                    const clip = prompt('Pega aquí el texto G-code del portapapeles:');
+                    if (clip !== null) {
+                        const a = editor.selectionStart, b = editor.selectionEnd;
+                        editor.setRangeText(clip, a, b, 'end'); editorDraft = editor.value;
+                    }
+                }
+            };
+            win.querySelector('[data-editor-action="select"]').onclick = () => { editor.focus(); editor.select(); };
+            editor.addEventListener('keydown', e => {
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); editorDraft = editor.value; addLog('> Borrador G-code guardado en la maqueta.', 'success'); }
+                if (e.key === 'Tab') { e.preventDefault(); editor.setRangeText('    ', editor.selectionStart, editor.selectionEnd, 'end'); }
+            });
+            wireFloatingWindow(win);
+            editor.focus();
+            return win;
+        }
+
+        function wireFloatingWindow(win) {
+            win.querySelector('.tl-close').onclick = e => {
+                e.stopPropagation(); if (activeWindow === win) activeWindow = null;
+                win.style.opacity = '0'; win.style.transform = 'scale(0.94)';
+                setTimeout(() => win.remove(), 190);
+            };
+            win.querySelector('.tl-min').onclick = e => {
+                e.stopPropagation();
+                if (win.classList.contains('maximized')) toggleMaximize(win);
+                else toggleMinimize(win);
+            };
+            win.querySelector('.tl-max').onclick = e => {
+                e.stopPropagation();
+                if (win.classList.contains('minimized')) toggleMinimize(win);
+                else toggleMaximize(win);
+            };
+            win.addEventListener('pointerdown', () => { win.style.zIndex = ++zCounter; activeWindow = win; });
+            const bar = win.querySelector('.motor-titlebar');
+            let dragging = false, sx = 0, sy = 0, left = 0, top = 0;
+            bar.addEventListener('pointerdown', e => {
+                if (e.target.closest('.tl') || win.classList.contains('maximized')) return;
+                dragging = true; sx = e.clientX; sy = e.clientY; left = win.offsetLeft; top = win.offsetTop;
+                win.classList.add('dragging'); try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+            });
+            bar.addEventListener('pointermove', e => {
+                if (dragging) { win.style.left = (left + e.clientX - sx) + 'px'; win.style.top = (top + e.clientY - sy) + 'px'; }
+            });
+            const end = e => { dragging = false; win.classList.remove('dragging'); try { bar.releasePointerCapture(e.pointerId); } catch (_) {} };
+            bar.addEventListener('pointerup', end); bar.addEventListener('pointercancel', end);
+            bar.addEventListener('dblclick', e => { if (!e.target.closest('.tl')) win.querySelector('.tl-max').click(); });
+        }
+
+        function openMotorWindow() {
+            windowCounter++;
+            zCounter++;
+
+            const win = document.createElement('div');
+            win.className = 'motor-window glass';
+            win.dataset.motor = 'X';
+
+            const offsetIdx = (windowCounter - 1) % 6;
+            win.style.left   = (80 + offsetIdx * 30) + 'px';
+            win.style.top    = (80 + offsetIdx * 30) + 'px';
+            win.style.width  = '500px';
+            win.style.height = '340px';
+            win.style.zIndex = zCounter;
+
+            win.innerHTML = `
+                <div class="motor-titlebar">
+                    <div class="traffic-lights">
+                        <button class="tl tl-close" aria-label="Cerrar"></button>
+                        <button class="tl tl-min"   aria-label="Minimizar"></button>
+                        <button class="tl tl-max"   aria-label="Maximizar"></button>
+                    </div>
+                    <div class="motor-tabs">
+                        <button class="motor-tab active" data-motor="X" data-axis="X">Motor X</button>
+                        <button class="motor-tab" data-motor="Y" data-axis="Y">Motor Y</button>
+                        <button class="motor-tab" data-motor="Z" data-axis="Z">Motor Z</button>
+                    </div>
+                    <div class="tl-spacer"></div>
+                </div>
+                <div class="motor-body">
+                    <div class="motor-live-stats">
+                        <span class="pulse-count">Pulsos: --</span>
+                        <strong class="pulse-rate">0 Hz</strong>
+                        <span class="pulse-link">Esperando STM32</span>
+                    </div>
+                    <div class="motor-live-caption">Frecuencia STEP: Hz frente al tiempo · muestras cada 100 ms</div>
+                    <div class="chart-container"><canvas></canvas></div>
+                </div>
+            `;
+
+            win.querySelectorAll('.motor-tab').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    win.querySelectorAll('.motor-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    win.dataset.motor = tab.dataset.motor;
+                    const c = win.querySelector('canvas');
+                    if (c) drawGraphOnCanvas(c, tab.dataset.motor);
+                });
+            });
+
+            win.querySelector('.tl-close').addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (activeWindow === win) activeWindow = null;
+                win.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
+                win.style.opacity = '0';
+                win.style.transform = 'scale(0.94)';
+                setTimeout(() => win.remove(), 190);
+            });
+
+            win.querySelector('.tl-min').addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (win.classList.contains('maximized')) {
+                    toggleMaximize(win);
+                    setTimeout(() => toggleMinimize(win), 470);
+                } else {
+                    toggleMinimize(win);
+                }
+            });
+
+            win.querySelector('.tl-max').addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (win.classList.contains('minimized')) {
+                    toggleMinimize(win);
+                    setTimeout(() => toggleMaximize(win), 470);
+                } else {
+                    toggleMaximize(win);
+                }
+            });
+
+            win.addEventListener('pointerdown', () => {
+                win.style.zIndex = ++zCounter;
+                activeWindow = win;
+            });
+
+            const titlebar = win.querySelector('.motor-titlebar');
+            let dragging = false, dragStartX = 0, dragStartY = 0, origLeft = 0, origTop = 0;
+
+            titlebar.addEventListener('pointerdown', (e) => {
+                if (e.target.closest('.tl') || e.target.closest('.motor-tab')) return;
+                if (win.classList.contains('maximized')) return;
+                dragging = true;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                origLeft = win.offsetLeft;
+                origTop  = win.offsetTop;
+                win.classList.add('dragging');
+                try { titlebar.setPointerCapture(e.pointerId); } catch(_) {}
+            });
+
+            titlebar.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                win.style.left = (origLeft + e.clientX - dragStartX) + 'px';
+                win.style.top  = (origTop  + e.clientY - dragStartY) + 'px';
+            });
+
+            const endDrag = (e) => {
+                if (!dragging) return;
+                dragging = false;
+                win.classList.remove('dragging');
+                try { titlebar.releasePointerCapture(e.pointerId); } catch(_) {}
+            };
+            titlebar.addEventListener('pointerup', endDrag);
+            titlebar.addEventListener('pointercancel', endDrag);
+
+            titlebar.addEventListener('dblclick', (e) => {
+                if (e.target.closest('.tl') || e.target.closest('.motor-tab')) return;
+                win.querySelector('.tl-max').click();
+            });
+
+            windowsLayer.appendChild(win);
+            window.setEnabledAxesUI?.(enabledAxes);
+            activeWindow = win;
+
+            const chart = win.querySelector('.chart-container');
+            if (window.ResizeObserver && chart) {
+                win._chartResizeObserver = new ResizeObserver(() => resizeCanvas(win));
+                win._chartResizeObserver.observe(chart);
+            }
+            window.setMotorPulseTelemetry(
+                latestMotorPulseState.stats,
+                latestMotorPulseState.telemetryAvailable,
+                latestMotorPulseState.connected
+            );
+
+            requestAnimationFrame(() => requestAnimationFrame(() => resizeCanvas(win)));
+            return win;
+        }
+
+        /* ============================================================
+           11) LISTENERS GLOBALES
+           ============================================================ */
+        window.openEditorWindow = openEditorWindow;
+        window.resetViewer = resetViewer;
+        window.showOnlyLayers = showOnlyLayers;
+        window.orderedFabrication = orderedFabrication;
+        window.selectTerminalOutput = selectTerminalOutput;
+        window.copyTerminalOutput = copyTerminalOutput;
+        window.clearTerminalOutput = clearTerminalOutput;
+
+        lens.addEventListener('click', (e) => {
+            if (e.target.closest('.terminal-content')) return;
+            toggleTerminal();
+        });
+        window.addEventListener('resize', () => {
+            document.querySelectorAll('.motor-window').forEach(win => resizeCanvas(win));
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (settingsModal.classList.contains('active')) {
+                    closeSettings();
+                } else if (activeWindow && activeWindow.isConnected) {
+                    activeWindow.querySelector('.tl-close').click();
+                } else if (lens.classList.contains('expanded')) {
+                    toggleTerminal();
+                }
+            }
+        });
+
+        /* ============================================================
+           12) INIT
+           ============================================================ */
+        updateClones();
+        generateMap(220, 48, 24, 15, 25);
+    </script>
+
+<script>
+/* ============================================================
+   JOG + MÁQUINA + VISORES 2D/3D  (misma matemática que main_window.py)
+   ============================================================ */
+(() => {
+const AX = 200, AY = 200, RAD = Math.PI / 180;
+const vz = document.getElementById('visualizerCanvas');
+const c2 = document.getElementById('cv2d'), c3 = document.getElementById('cv3d');
+const $ = id => document.getElementById(id);
+const L = {
+  'B.Cu': {c:'#3366cc', w:2, v:true, s:[]}, 'F.Cu': {c:'#cc3333', w:2, v:true, s:[]},
+  'F.Mask': {c:'#a855f7', w:1, v:true, s:[]}, 'F.SilkS': {c:'#ffffff', w:1, v:true, s:[]},
+  'Edge.Cuts': {c:'#ffcc00', w:2, v:true, s:[]}, 'GCode': {c:'#ff8c42', w:2, v:true, s:[]}
+};
+const HL = { PTH: {c:'#00ffff', v:true, h:[]}, NPTH: {c:'#ff00ff', v:true, h:[]} };
+const tool = {x:0, y:0, z:0, valid:true};
+const v2 = {zoom:1, px:0, py:0};
+const v3 = {rz:30, rx:45, zoom:1, px:0, py:0, sf:1.5};
+let view = '2d', showRapid = true, showCut = true, mouse = null, T2 = null;
+let hostTarget = null, hostFrame = 0, hostFrameTime = 0;
+let staticVersion = 0, staticKey2 = '', staticKey3 = '';
+const staticCanvas2 = document.createElement('canvas'), staticCanvas3 = document.createElement('canvas');
+
+/* ---- 2D: mundo -> pantalla ---- */
+function xf2(W, H) {
+  const m = 40, s = Math.min((W-2*m)/AX, (H-2*m)/AY) * v2.zoom;
+  return {s, x0:(W-AX*s)/2 + v2.px, y0:(H-AY*s)/2 + v2.py};
+}
+const w2s = (t,x,y) => [t.x0 + x*t.s, t.y0 + (AY-y)*t.s];
+const s2w = (t,x,y) => [(x-t.x0)/t.s, AY - (y-t.y0)/t.s];
+
+/* ---- 3D: transformación afín (yaw rz, pitch rx) ---- */
+function xf3(W, H) {
+  const sf = v3.sf * v3.zoom, yw = v3.rz*RAD, pt = v3.rx*RAD;
+  const cy = Math.cos(yw), sy = Math.sin(yw), cp = Math.cos(pt), sp = Math.sin(pt);
+  const m11 = sf*cy, m21 = -sf*sy, m12 = -sf*sy*sp, m22 = -sf*cy*sp;
+  return {m11, m12, m21, m22, sf, cp, sp,
+    dx: -AX/2*m11 - AY/2*m21 + W/2 + v3.px, dy: -AX/2*m12 - AY/2*m22 + H/2 + v3.py};
+}
+const p3 = (t,x,y,z=0) => [t.m11*x + t.m21*y + t.dx, t.m12*x + t.m22*y + t.dy - z*t.sf*t.cp];
+function s2w3(t, sx, sy) {
+  const det = t.m11*t.m22 - t.m21*t.m12;
+  if (Math.abs(det) < 1e-6) return null;
+  const a = sx - t.dx, b = sy - t.dy;
+  return [(t.m22*a - t.m21*b)/det, (-t.m12*a + t.m11*b)/det];
+}
+function raw3(x, y) {
+  const sf = v3.sf*v3.zoom, mx = (x-AX/2)*sf, my = (y-AY/2)*sf, yw = v3.rz*RAD;
+  return [mx*Math.cos(yw) - my*Math.sin(yw), -(mx*Math.sin(yw) + my*Math.cos(yw))*Math.sin(v3.rx*RAD)];
+}
+function fit3(W, H) {
+  const pts = []; Object.values(L).forEach(l => l.s.forEach(q => pts.push([q[0],q[1]],[q[2],q[3]])));
+  if (!pts.length) { v3.zoom = 1; v3.px = v3.py = 0; return; }
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const x1 = Math.min(...xs), x2 = Math.max(...xs), y1 = Math.min(...ys), y2 = Math.max(...ys);
+  v3.zoom = 1; v3.px = v3.py = 0;
+  const pr = [[x1,y1],[x2,y1],[x2,y2],[x1,y2]].map(p => raw3(p[0], p[1]));
+  const sw = Math.max(...pr.map(p=>p[0])) - Math.min(...pr.map(p=>p[0]));
+  const sh = Math.max(...pr.map(p=>p[1])) - Math.min(...pr.map(p=>p[1]));
+  if (sw < 1e-3 || sh < 1e-3) return;
+  v3.zoom = Math.max(0.05, Math.min(30, Math.min((W-140)/sw, (H-140)/sh)));
+  const c = raw3((x1+x2)/2, (y1+y2)/2); v3.px = -c[0]; v3.py = -c[1];
+}
+
+/* ---- dibujo ---- */
+const dark = () => !['white','text'].includes($('app').getAttribute('data-theme'));
+function prep(c) {
+  const r = vz.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  if (c.width !== Math.round(r.width*d) || c.height !== Math.round(r.height*d)) { c.width = Math.round(r.width*d); c.height = Math.round(r.height*d); }
+  const x = c.getContext('2d'); x.setTransform(d,0,0,d,0,0); x.clearRect(0,0,r.width,r.height);
+  return [x, r.width, r.height];
+}
+function strokeSegs(x, segs, P, color, w, dash, filt) {
+  x.beginPath();
+  segs.forEach(q => { if (filt && !filt(q)) return; const a = P(q[0],q[1]), b = P(q[2],q[3]); x.moveTo(a[0],a[1]); x.lineTo(b[0],b[1]); });
+  x.strokeStyle = color; x.lineWidth = w; x.setLineDash(dash || []); x.stroke(); x.setLineDash([]);
+}
+function drawLayers(x, P, rs) {
+  Object.entries(L).forEach(([name, layer]) => {
+    if (name !== 'GCode' && layer.v) strokeSegs(x, layer.s, P, layer.c, layer.w);
+  });
+  const g = L['GCode'];
+  if (g.v) { if (showRapid) strokeSegs(x, g.s, P, '#8e8e93', 1, [4,4], q => q[4]==='rapid');
+            if (showCut) strokeSegs(x, g.s, P, g.c, g.w, null, q => q[4]!=='rapid'); }
+  Object.values(HL).forEach(h => { if (!h.v) return; x.strokeStyle = h.c; x.lineWidth = 1.5;
+    h.h.forEach(o => { const a = P(o[0], o[1]); x.beginPath(); x.arc(a[0], a[1], Math.max(2, o[2]*rs), 0, 6.2832); x.stroke(); }); });
+}
+function bubble(px, py) {
+  const b = $('coordBubble'); b.style.bottom = 'auto'; b.style.left = (px+14)+'px'; b.style.top = (py-34)+'px';
+  b.textContent = `(${tool.x.toFixed(2)}, ${tool.y.toFixed(2)})`;
+}
+function draw2() {
+  const [x, W, H] = prep(c2), t = T2 = xf2(W, H), P = (a,b) => w2s(t,a,b);
+  const d = window.devicePixelRatio || 1;
+  const key = [c2.width,c2.height,d,v2.zoom,v2.px,v2.py,dark(),showRapid,showCut,staticVersion].join(':');
+  if (key !== staticKey2) {
+    staticCanvas2.width=c2.width; staticCanvas2.height=c2.height;
+    const b=staticCanvas2.getContext('2d'); b.setTransform(d,0,0,d,0,0); b.clearRect(0,0,W,H);
+    const cand = [1,2,5,10,20,50,100,200,500,1000,2000], g = cand.find(q => q >= 50/t.s) || 2000;
+    b.strokeStyle = dark() ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)'; b.lineWidth = 1; b.beginPath();
+    for (let a = Math.floor(-t.x0/t.s/g)*g; a <= (W-t.x0)/t.s; a += g) { const X = t.x0 + a*t.s; b.moveTo(X,0); b.lineTo(X,H); }
+    for (let by = Math.floor((t.y0+AY*t.s-H)/t.s/g)*g; by <= (t.y0+AY*t.s)/t.s; by += g) { const Y = t.y0 + (AY-by)*t.s; b.moveTo(0,Y); b.lineTo(W,Y); }
+    b.stroke();
+    const origin = P(0,0);
+    b.lineWidth = 1.5;
+    b.beginPath(); b.moveTo(0, origin[1]); b.lineTo(W, origin[1]); b.strokeStyle = '#a855f7'; b.stroke();
+    b.beginPath(); b.moveTo(origin[0], 0); b.lineTo(origin[0], H); b.strokeStyle = '#27C93F'; b.stroke();
+    // Valores de coordenadas en las marcas de los ejes (unidades del visor).
+    b.setLineDash([]); b.font = '10px ui-monospace, monospace'; b.textBaseline = 'top';
+    b.fillStyle = '#c084fc';
+    const xStart = Math.ceil((0-t.x0)/(g*t.s))*g;
+    const xEnd = Math.floor((W-t.x0)/(g*t.s))*g;
+    if (origin[1] >= 0 && origin[1] <= H) for (let value=xStart; value<=xEnd; value+=g) {
+      if (value === 0) continue;
+      const sx=t.x0+value*t.s;
+      b.fillText(String(value), sx+3, Math.max(3, Math.min(H-14, origin[1]+5)));
+    }
+    b.fillStyle = '#4ade80'; b.textBaseline = 'middle'; b.textAlign = 'left';
+    const yStart = Math.ceil((origin[1]-H)/(g*t.s))*g;
+    const yEnd = Math.floor(origin[1]/(g*t.s))*g;
+    if (origin[0] >= 0 && origin[0] <= W) for (let value=yStart; value<=yEnd; value+=g) {
+      if (value === 0) continue;
+      const sy=origin[1]-value*t.s;
+      b.fillText(String(value), Math.max(3, Math.min(W-42, origin[0]+5)), sy);
+    }
+    b.textAlign = 'start';
+    b.fillStyle = '#27C93F'; b.beginPath(); b.arc(origin[0], origin[1], 4, 0, 6.2832); b.fill();
+    drawLayers(b, P, t.s);
+    staticKey2=key;
+  }
+  x.drawImage(staticCanvas2,0,0,W,H);
+  if (tool.valid) {
+    const tp = P(tool.x, tool.y);
+    x.strokeStyle = '#ff4422'; x.lineWidth = 2; x.beginPath(); x.arc(tp[0], tp[1], 6, 0, 6.2832);
+    x.moveTo(tp[0]-11, tp[1]); x.lineTo(tp[0]+11, tp[1]); x.moveTo(tp[0], tp[1]-11); x.lineTo(tp[0], tp[1]+11); x.stroke();
+    bubble(tp[0], tp[1]);
+  } else { $('coordBubble').textContent = '(sin origen)'; }
+  $('sbL').textContent = `Zoom: ${Math.round(v2.zoom*100)}% | Pos: ${tool.valid ? `(${tool.x.toFixed(2)}, ${tool.y.toFixed(2)})` : '(?)'}`;
+  const m = mouse && s2w(t, mouse[0], mouse[1]);
+  $('sbR').textContent = m ? `Cursor: (${m[0].toFixed(1)}, ${m[1].toFixed(1)})` : 'Cursor: (-, -)';
+}
+function draw3() {
+  const [x, W, H] = prep(c3), t = xf3(W, H), P = (a,b) => p3(t,a,b);
+  const d = window.devicePixelRatio || 1;
+  const key = [c3.width,c3.height,d,v3.rz,v3.rx,v3.zoom,v3.px,v3.py,dark(),showRapid,showCut,staticVersion].join(':');
+  if (key !== staticKey3) {
+    staticCanvas3.width=c3.width; staticCanvas3.height=c3.height;
+    const b=staticCanvas3.getContext('2d'); b.setTransform(d,0,0,d,0,0); b.clearRect(0,0,W,H);
+    b.strokeStyle = dark() ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'; b.lineWidth = 1; b.beginPath();
+    for (let g = -1000; g <= 1000; g += 10) {
+      const a = P(g,-1000), bb = P(g,1000); b.moveTo(a[0],a[1]); b.lineTo(bb[0],bb[1]);
+      const cc = P(-1000,g), dd = P(1000,g); b.moveTo(cc[0],cc[1]); b.lineTo(dd[0],dd[1]);
+    }
+    b.stroke();
+    strokeSegs(b, [[-1000,0,1000,0]], P, '#a855f7', 2);
+    strokeSegs(b, [[0,-1000,0,1000]], P, '#27C93F', 2);
+    const zt = p3(t,0,0,0), zu = p3(t,0,0,40); b.beginPath(); b.moveTo(zt[0],zt[1]); b.lineTo(zu[0],zu[1]); b.strokeStyle = '#0A84FF'; b.lineWidth = 2; b.stroke();
+    drawLayers(b, P, t.sf);
+    staticKey3=key;
+  }
+  x.drawImage(staticCanvas3,0,0,W,H);
+  if (tool.valid) {
+    const tip = p3(t, tool.x, tool.y, tool.z), top = p3(t, tool.x, tool.y, tool.z+15);
+    x.strokeStyle = '#ff4422'; x.lineWidth = 3; x.beginPath(); x.moveTo(tip[0],tip[1]); x.lineTo(top[0],top[1]); x.stroke();
+    x.beginPath(); x.arc(tip[0], tip[1], 4, 0, 6.2832); x.fillStyle = '#ff4422'; x.fill();
+    bubble(top[0], top[1]);
+  } else { $('coordBubble').textContent = '(sin origen)'; }
+  $('sbL').textContent = `Zoom: ${Math.round(v3.zoom*100)}% | Yaw ${v3.rz.toFixed(0)}° Pitch ${v3.rx.toFixed(0)}°`;
+  const m = mouse && s2w3(t, mouse[0], mouse[1]);
+  $('sbR').textContent = m ? `Cursor: (${m[0].toFixed(1)}, ${m[1].toFixed(1)})` : 'Cursor: (-, -)';
+}
+const draw = () => view === '2d' ? draw2() : draw3();
+function setView(v) {
+  view = v; c2.style.display = v === '2d' ? '' : 'none'; c3.style.display = v === '3d' ? '' : 'none';
+  document.querySelectorAll('.view-tab').forEach((e,i) => e.classList.toggle('active', (i === 0) === (v === '2d')));
+  if (v === '3d') { if (!v3.fitted) { v3.zoom = 1; v3.px = v3.py = 0; v3.fitted = true; } c3.focus(); }
+  draw();
+}
+const tabs = document.querySelectorAll('.view-tab');
+tabs[0].onclick = () => setView('2d'); tabs[1].onclick = () => setView('3d');
+
+/* ---- interacción 2D ---- */
+const pos = (e, c) => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+function drag(c, onMove) {
+  let d = null;
+  c.addEventListener('pointerdown', e => { d = {x:e.clientX, y:e.clientY, b:e.button}; c.setPointerCapture(e.pointerId); c.classList.add('drag'); c.focus(); });
+  c.addEventListener('pointermove', e => { mouse = pos(e, c); if (d) { onMove(e.clientX-d.x, e.clientY-d.y, d.b, e); d.x = e.clientX; d.y = e.clientY; } draw(); });
+  const up = () => { d = null; c.classList.remove('drag'); };
+  c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+  c.addEventListener('pointerleave', () => { mouse = null; draw(); });
+}
+drag(c2, (dx, dy) => { v2.px += dx; v2.py += dy; });
+c2.addEventListener('wheel', e => {
+  e.preventDefault(); const W = vz.clientWidth, H = vz.clientHeight, [cx, cy] = pos(e, c2);
+  const [wx, wy] = s2w(xf2(W, H), cx, cy);
+  v2.zoom = Math.max(0.05, Math.min(100, v2.zoom * (e.deltaY < 0 ? 1.15 : 1/1.15)));
+  const s = xf2(W, H).s;
+  v2.px = cx - (W-AX*s)/2 - wx*s; v2.py = cy - (H-AY*s)/2 - (AY-wy)*s; draw();
+}, {passive:false});
+c2.addEventListener('dblclick', () => { v2.zoom = 1; v2.px = v2.py = 0; draw(); });
+
+/* ---- interacción 3D ---- */
+drag(c3, (dx, dy, b, e) => {
+  if (b === 0) { const k = e.shiftKey ? 0.25 : 0.5; v3.rz = (v3.rz + dx*k + 360) % 360; v3.rx = Math.max(0, Math.min(89, v3.rx + dy*k)); }
+  else { const k = e.shiftKey ? 0.5 : 1; v3.px += dx*k; v3.py += dy*k; }
+});
+c3.addEventListener('contextmenu', e => e.preventDefault());
+c3.addEventListener('wheel', e => {
+  e.preventDefault(); if (!e.deltaY) return; const up = e.deltaY < 0;
+  if (e.shiftKey) v3.rz = (v3.rz + (up ? 2 : -2) + 360) % 360;
+  else if (e.ctrlKey) v3.rx = Math.max(0, Math.min(89, v3.rx + (up ? 2 : -2)));
+  else {
+    const [cx, cy] = pos(e, c3), dx = cx - (vz.clientWidth/2 + v3.px), dy = cy - (vz.clientHeight/2 + v3.py);
+    const nz = Math.max(0.05, Math.min(30, v3.zoom * (up ? 1.12 : 1/1.12))), a = nz / v3.zoom;
+    v3.px = v3.px*a + dx*(1-a); v3.py = v3.py*a + dy*(1-a); v3.zoom = nz;
+  }
+  draw();
+}, {passive:false});
+function reset3() { v3.rz = 30; v3.rx = 45; fit3(vz.clientWidth, vz.clientHeight); draw(); }
+c3.addEventListener('dblclick', reset3);
+c3.addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === '1') { v3.rx = 89; v3.rz = 0; } else if (k === '2') { v3.rx = 0; v3.rz = 0; }
+  else if (k === '3') { v3.rx = 0; v3.rz = 90; } else if (k === '4') { v3.rx = 45; v3.rz = 30; }
+  else if (k === '0') return reset3(); else if (k.toLowerCase() === 'f') { fit3(vz.clientWidth, vz.clientHeight); }
+  else return;
+  draw();
+});
+
+/* ---- capas y visibilidad ---- */
+const names = ['F.Cu','B.Cu','Edge.Cuts','F.SilkS','F.Mask','PTH','NPTH'];
+document.querySelectorAll('.layer-checkbox').forEach((cb, i) => cb.addEventListener('change', () => {
+  const n = names[i]; (L[n] || HL[n]).v = cb.checked; staticVersion++; draw(); }));
+document.querySelectorAll('.sidebar-toggle input').forEach(cb => cb.addEventListener('change', () => {
+  const t = cb.parentElement.textContent; if (t.includes('G0')) showRapid = cb.checked; if (t.includes('G1')) showCut = cb.checked; staticVersion++; draw(); }));
+new ResizeObserver(draw).observe(vz);
+new MutationObserver(draw).observe($('app'), {attributes:true, attributeFilter:['data-theme']});
+
+/* ---- API para la GUI ---- */
+function setTool(px, py, pz) {
+  tool.x = Math.max(0, Math.min(AX, px)); tool.y = Math.max(0, Math.min(AY, py)); tool.z = pz; tool.valid = true;
+  const v = document.querySelectorAll('.sidebar-right .widget')[0].querySelectorAll('.val-data');
+  v[0].textContent = tool.x.toFixed(2); v[1].textContent = tool.y.toFixed(2); v[2].textContent = tool.z.toFixed(2); draw();
+}
+function setHostPosition(px, py, pz, valid) {
+  const wasValid = tool.valid;
+  const nextValid = !!valid;
+  const nx = Number(px) || 0, ny = Number(py) || 0, nz = Number(pz) || 0;
+  let immediateDraw = false;
+  tool.valid = nextValid;
+  if (!nextValid) {
+    immediateDraw = wasValid || !!hostTarget;
+    hostTarget = null; hostFrameTime = 0;
+    if (hostFrame) cancelAnimationFrame(hostFrame);
+    hostFrame = 0;
+  } else if (!wasValid) {
+    immediateDraw = true;
+    tool.x = nx; tool.y = ny; tool.z = nz;
+    hostTarget = null; hostFrameTime = 0;
+    if (hostFrame) cancelAnimationFrame(hostFrame);
+    hostFrame = 0;
+  } else {
+    if (hostTarget && Math.abs(hostTarget.x-nx)<0.001 && Math.abs(hostTarget.y-ny)<0.001 && Math.abs(hostTarget.z-nz)<0.001) return;
+    if (!hostTarget && Math.abs(tool.x-nx)<0.001 && Math.abs(tool.y-ny)<0.001 && Math.abs(tool.z-nz)<0.001) return;
+    hostTarget = {x:nx,y:ny,z:nz};
+    if (!hostFrame) hostFrame = requestAnimationFrame(animateHostPosition);
+  }
+  const vals = document.querySelectorAll('.sidebar-right .widget:first-child .val-data');
+  if (vals.length >= 3) {
+    vals[0].textContent = tool.valid ? tool.x.toFixed(2) : '?';
+    vals[1].textContent = tool.valid ? tool.y.toFixed(2) : '?';
+    vals[2].textContent = tool.valid ? tool.z.toFixed(2) : '?';
+  }
+  if (immediateDraw) draw();
+}
+function animateHostPosition(now) {
+  if (!hostTarget || !tool.valid) { hostFrame = 0; hostFrameTime = 0; return; }
+  const dt = hostFrameTime ? Math.min(0.05, (now-hostFrameTime)/1000) : 1/60;
+  hostFrameTime = now;
+  const blend = 1 - Math.exp(-20*dt);
+  tool.x += (hostTarget.x-tool.x)*blend;
+  tool.y += (hostTarget.y-tool.y)*blend;
+  tool.z += (hostTarget.z-tool.z)*blend;
+  const remaining = Math.max(Math.abs(hostTarget.x-tool.x),Math.abs(hostTarget.y-tool.y),Math.abs(hostTarget.z-tool.z));
+  if (remaining < 0.015) {
+    tool.x=hostTarget.x; tool.y=hostTarget.y; tool.z=hostTarget.z;
+    hostTarget=null; hostFrame=0; hostFrameTime=0;
+  }
+  draw();
+  if (hostTarget) hostFrame=requestAnimationFrame(animateHostPosition);
+}
+function setHostProgram(program) {
+  Object.entries(program.layers || {}).forEach(([name, layer]) => {
+    if (!L[name]) L[name] = {c:layer.color || '#ff8c42', w:2, v:true, s:[]};
+    L[name].c = layer.color || L[name].c;
+    L[name].v = !!layer.visible;
+    L[name].s = layer.segments || [];
+  });
+  Object.entries(program.holes || {}).forEach(([name, layer]) => {
+    if (!HL[name]) HL[name] = {c:layer.color || '#00ffff', v:true, h:[]};
+    HL[name].c = layer.color || HL[name].c;
+    HL[name].v = !!layer.visible;
+    HL[name].h = layer.holes || [];
+  });
+  staticVersion++;
+  draw();
+}
+function setMotionVisibility(rapid, cuts) {
+  const nextRapid = !!rapid, nextCuts = !!cuts;
+  if (showRapid === nextRapid && showCut === nextCuts) return;
+  showRapid = nextRapid; showCut = nextCuts;
+  staticVersion++;
+  draw();
+}
+window.viewerAPI = {L, HL, setTool, setHostPosition, setHostProgram, setView,
+  setMotionVisibility,
+  reset2: () => { v2.zoom = 1; v2.px = v2.py = 0; draw(); }, reset3,
+  fit3: () => { fit3(vz.clientWidth, vz.clientHeight); draw(); }, redraw: draw};
+window.setHostConnection = (connected, polling) => { isConnected = !!connected; isPolling = !!polling; };
+
+/* ---- Jog / Máquina ---- */
+const log = (m, t = '') => { if (!lens.classList.contains('expanded')) toggleTerminal(); setTimeout(() => addLog(m, t), 300); };
+let step = 1;
+const ctl = document.querySelectorAll('#accordionFab .segmented-control');
+const SP = {Lento:200, Normal:300, 'Rápido':2000, Turbo:5000};
+const sc = ctl[1]; const tb = document.createElement('div'); tb.className = 'segment'; tb.textContent = 'Turbo'; tb.setAttribute('onclick', 'setSegment(this)'); sc.appendChild(tb);
+sc.querySelectorAll('.segment').forEach(e => e.dataset.val = SP[e.textContent.trim()]);
+const MD = {Normal:'NORMAL', 'Rápido':'FAST', Preciso:'PRECISION'};
+ctl[0].querySelectorAll('.segment').forEach(e => e.addEventListener('click', () => log(`> G1000 M1 MODO=${MD[e.textContent.trim()]}`)));
+
+const sg = $('stepGrid'), jb = $('jogBubbles');
+[0.1, 0.5, 1, 5, 10, 50].forEach(v => { const e = document.createElement('div'); e.className = 'step-chip' + (v === step ? ' active' : ''); e.textContent = v;
+  e.onclick = () => { step = v; sg.querySelectorAll('.step-chip').forEach(q => q.classList.toggle('active', q === e)); $('jogChip').textContent = `Paso ${v} mm`; }; sg.appendChild(e); });
+const mk = (i, html, axis = '') => { const d = document.createElement('div'); d.className = 'jog-item'; d.style.setProperty('--i', i); if (axis) d.dataset.axis = axis; d.innerHTML = html; jb.appendChild(d); return d; };
+mk(0, '<div class="jog-chip" id="jogChip">Paso 1 mm</div>');
+[['←X','X',-1],['X→','X',1],['←Y','Y',-1],['Y→','Y',1],['Z↓','Z',-1],['Z↑','Z',1]].forEach((j, i) => {
+  mk(i+1, `<div class="bubble-btn">${j[0]}</div>`, j[1]).firstChild.onclick = () => jog(j[1], j[2]); });
+const enabledAxes = {X:true, Y:true, Z:false};
+window.setEnabledAxesUI = axes => {
+  ['X','Y','Z'].forEach(axis => {
+    enabledAxes[axis] = !!axes?.[axis];
+    document.querySelectorAll(`[data-axis="${axis}"]`).forEach(el => { el.hidden = !enabledAxes[axis]; });
+  });
+  document.querySelectorAll('.motor-window:not(.editor-window)').forEach(win => {
+    if (!enabledAxes[win.dataset.motor]) {
+      const nextTab = ['X','Y','Z'].find(axis => enabledAxes[axis]);
+      win.dataset.motor = nextTab || '';
+      const activeTab = nextTab ? win.querySelector(`.motor-tab[data-motor="${nextTab}"]`) : null;
+      win.querySelectorAll('.motor-tab').forEach(tab => tab.classList.toggle('active', tab === activeTab));
+      const canvas = win.querySelector('canvas');
+      if (canvas && nextTab) drawGraphOnCanvas(canvas, nextTab);
+    }
+  });
+};
+document.querySelectorAll('.axis-enable-toggle').forEach(toggle => toggle.addEventListener('change', () => {
+  const axes = {X:$('axisEnableX').checked, Y:$('axisEnableY').checked, Z:$('axisEnableZ').checked};
+  window.setEnabledAxesUI(axes);
+}));
+function jog(a, sg_) {
+  if (!enabledAxes[a]) return;
+  if (window.cncBridgeReady && window.cncBridge) {
+    const speed = Number(sc.querySelector('.segment.active')?.dataset.val || 300);
+    window.cncBridge.jogAxis(a, sg_, step, speed);
+    return;
+  }
+  if (!isConnected) return log('> ERROR: No conectado');
+  const f = sc.querySelector('.segment.active').dataset.val, d = +(step*sg_).toFixed(3);
+  log('> G91'); log(`> G1 ${a}${d} F${f}`); log('> G90', 'success');
+  setTool(tool.x + (a === 'X' ? d : 0), tool.y + (a === 'Y' ? d : 0), tool.z + (a === 'Z' ? d : 0));
+}
+window.toggleJog = () => vz.classList.toggle('jog-active');
+window.machineCmd = (name, cmd, x, y) => {
+  if (!isConnected) return log('> ERROR: No conectado');
+  log(`> ${cmd}`, 'success'); if (x !== undefined) setTool(x, y, tool.z);
+};
+$('foSlider').addEventListener('input', e => $('foLabel').textContent = e.target.value + '%');
+$('foSlider').addEventListener('change', e => log(`> Feed override ${e.target.value}% (M220 S${e.target.value} solo durante un trabajo)`));
+const homeBtn = [...document.querySelectorAll('.sidebar-right button, .sidebar-right div')].find(e => e.children.length <= 2 && e.textContent.trim() === 'Home');
+if (homeBtn) homeBtn.onclick = () => machineCmd('Home', '$H', 0, 0);
+draw();
+})();
+</script>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="bridge.js"></script>
+</body>
+</html>
