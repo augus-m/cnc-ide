@@ -465,7 +465,8 @@
             z-index: 0;
         }
         .motor-titlebar, .motor-body { position: relative; z-index: 1; }
-        .motor-window.dragging { transition: box-shadow 0.2s ease; }
+        .motor-window.dragging { transition: box-shadow 0.2s ease; will-change: left, top; }
+        .motor-window.dragging, .motor-window.dragging * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
         .editor-window { width: min(760px, calc(100vw - 36px)); height: min(580px, calc(100vh - 36px)); min-width: 420px; min-height: 320px; }
         .editor-window .motor-body { gap: 10px; }
         .editor-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -547,6 +548,55 @@
         }
         .motor-live-stats strong { color: var(--apple-green); font-size: 13px; }
         .motor-live-caption { color: var(--text-muted); font-size: 10px; margin: 0 2px 6px; }
+        .motor-toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 2px 6px; }
+        .motor-action { font-size: 10px; padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(128,128,128,.4); background: transparent; color: var(--text-main); cursor: pointer; }
+        .motor-action:hover { background: rgba(127,127,127,.15); }
+        .motor-action.active { background: var(--text-main); color: var(--bg-solid); }
+        .motor-analysis { font-size: 10px; color: var(--text-muted); margin: 0 2px 6px; max-height: 92px; overflow: auto; }
+        .motor-window.advanced .motor-analysis { max-height: 200px; }
+        .motor-analysis table { width: 100%; border-collapse: collapse; }
+        .motor-analysis th, .motor-analysis td { text-align: left; padding: 1px 8px 1px 0; font-weight: 500; white-space: nowrap; }
+        .motor-analysis > table:not(.motor-samples) th { width: 42%; color: var(--text-muted); }
+        .motor-analysis td { color: var(--text-main); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .motor-analysis .motor-samples th { color: var(--text-muted); }
+        .motor-an-note { font-style: italic; }
+        .monitor-btn-stack { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+        .monitor-btn-item { display: flex; flex-direction: column; gap: 4px; }
+        .monitor-big-btn { width: 100%; padding: 10px 14px; border-radius: 999px; border: 1px solid rgba(128,128,128,.4); background: rgba(127,127,127,.12); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer; }
+        .monitor-big-btn:hover { background: rgba(127,127,127,.25); }
+        .history-body { flex: 1; display: grid; grid-template-columns: 190px 1fr; gap: 10px; padding: 10px 12px; min-height: 0; box-sizing: border-box; }
+        .motor-window.minimized .history-body { display: none; }
+        .history-toolbar { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-height: 0; overflow: auto; }
+        .history-toolbar .motor-action { width: 100%; text-align: center; }
+        .history-toolbar .motor-action.active { background: var(--text-main); color: var(--bg-solid); }
+        .history-meta { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+        .history-log { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px 10px; border-radius: 12px; background: rgba(0,0,0,.18); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-main); white-space: pre-wrap; word-break: break-all; }
+        .h-ERR, .h-ALARM { color: #ff453a; }
+        .h-TX { color: #0a84ff; }
+        .h-RX { color: #27C93F; }
+        .h-SYS { color: var(--text-muted); }
+        .motor-window.minimized .monitor-ed-body { display: none; }
+        .monitor-ed-body { display: grid; grid-template-columns: 190px 1fr 200px; gap: 10px; height: calc(100% - 44px); padding: 10px 12px; box-sizing: border-box; min-height: 0; }
+        .monitor-ed-list, .monitor-ed-tools { overflow: auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+        .monitor-ed-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+        .monitor-ed-toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
+        .monitor-ed-stage { position: relative; flex: 1; min-height: 200px; border-radius: 12px; background: rgba(0,0,0,.18); overflow: hidden; }
+        .monitor-ed-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+        .monitor-ed-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+        .monitor-ed-readout { font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-muted); min-height: 16px; }
+        .monitor-ed-item { display: flex; flex-direction: column; align-items: flex-start; text-align: left; width: 100%; padding: 6px 8px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-main); cursor: pointer; font-size: 11px; }
+        .monitor-ed-item span { color: var(--text-muted); font-size: 10px; }
+        .monitor-ed-item:hover { background: rgba(127,127,127,.12); }
+        .monitor-ed-item.active { border-color: rgba(127,127,127,.5); background: rgba(127,127,127,.18); }
+        .monitor-ed-group { display: flex; flex-direction: column; gap: 5px; }
+        .monitor-ed-group h4 { margin: 6px 0 2px; font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+        .monitor-ed-group .motor-action { width: 100%; text-align: center; }
+        .monitor-ed-marks { display: flex; flex-direction: column; gap: 3px; max-height: 96px; overflow: auto; font-size: 10px; }
+        .monitor-ed-mark { display: flex; align-items: center; gap: 6px; color: var(--text-main); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .monitor-ed-mark .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff3b30; flex-shrink: 0; }
+        .monitor-ed-mark .motor-action { margin-left: auto; font-size: 10px; padding: 2px 8px; }
+        .monitor-ed-tools select { font-size: 11px; padding: 4px; border-radius: 8px; max-width: 100%; background: rgba(127,127,127,.15); color: var(--text-main); border: 1px solid rgba(127,127,127,.35); }
+        .monitor-ed-tools select option { background: var(--bg-solid); color: var(--text-main); }
 
         /* =========================================================
            VENTANA DE AJUSTES
@@ -986,6 +1036,14 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                     Monitor Motores
                 </div>
+                <div class="menu-item action-btn" onclick="openMonitorEditor()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+                    Editor Monitor
+                </div>
+                <div class="menu-item action-btn" onclick="openHistoryWindow()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                    Historial
+                </div>
                 <div class="menu-item action-btn danger" onclick="alert('Limpiar')">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     Limpiar todo
@@ -1188,6 +1246,7 @@
                     <div class="settings-tab" onclick="setSettingsTab('tab-colores', this)">Colores</div>
                     <div class="settings-tab" onclick="setSettingsTab('tab-consola', this)">Consola</div>
                     <div class="settings-tab" onclick="setSettingsTab('tab-temas', this)">Temas</div>
+                    <div class="settings-tab" onclick="setSettingsTab('tab-monitor', this)">Monitor</div>
                     <div class="settings-tab" onclick="setSettingsTab('tab-mcp', this)">MCP</div>
                 </div>
 
@@ -1365,6 +1424,39 @@
                             <span>Texto (T)</span>
                         </div>
                     </div>
+                </div>
+
+                <!-- TAB: MONITOR -->
+                <div id="tab-monitor" class="tab-content">
+                    <div class="settings-main-title">Monitor de motores</div>
+                    <div class="settings-row">
+                        <label for="monitorAdvanced">Modo avanzado</label>
+                        <input type="checkbox" id="monitorAdvanced" onchange="applyMonitorSettings()">
+                    </div>
+                    <div class="helper-text">Añade velocidad en mm/s, área bajo la curva, velocidades medias y una tabla con las últimas muestras.</div>
+                    <div class="settings-row"><label>Pasos/mm X:</label><input type="text" id="monitorStepsX" class="settings-input" value="628" onchange="applyMonitorSettings()"></div>
+                    <div class="settings-row"><label>Pasos/mm Y:</label><input type="text" id="monitorStepsY" class="settings-input" value="1256" onchange="applyMonitorSettings()"></div>
+                    <div class="settings-row"><label>Área de trabajo X (mm):</label><input type="text" id="monitorAreaX" class="settings-input" value="109" onchange="applyMonitorSettings()"></div>
+                    <div class="settings-row"><label>Área de trabajo Y (mm):</label><input type="text" id="monitorAreaY" class="settings-input" value="57" onchange="applyMonitorSettings()"></div>
+                    <div class="settings-row"><label>Umbral de movimiento (Hz):</label><input type="text" id="monitorThreshold" class="settings-input" value="5" onchange="applyMonitorSettings()"></div>
+                    <div class="settings-row"><label>Muestras visibles en la gráfica:</label><input type="text" id="monitorViewSamples" class="settings-input" value="120" onchange="applyMonitorSettings()"></div>
+                    <div class="settings-row"><label>Muestras guardadas en memoria:</label><input type="text" id="monitorHistoryMax" class="settings-input" value="6000" onchange="applyMonitorSettings()"></div>
+                    <div class="helper-text">Con muestreo de 100 ms, 6000 muestras equivalen a 10 minutos de registro.</div>
+                    <div class="monitor-btn-stack">
+                        <div class="monitor-btn-item">
+                            <button class="monitor-big-btn" onclick="captureAllMotorCharts()">Capturar gráficas</button>
+                            <div class="helper-text">Guarda una captura PNG de cada ventana de motor abierta en la biblioteca del Editor Monitor.</div>
+                        </div>
+                        <div class="monitor-btn-item">
+                            <button class="monitor-big-btn" onclick="exportMotorCsv(['X','Y'])">Exportar CSV</button>
+                            <div class="helper-text">Exporta las muestras de X e Y (tiempo, pulsos, Hz y mm/s) a un archivo CSV.</div>
+                        </div>
+                        <div class="monitor-btn-item">
+                            <button class="monitor-big-btn" onclick="clearMotorHistory()">Limpiar gráfica</button>
+                            <div class="helper-text">Borra las muestras de las gráficas en memoria. No borra capturas guardadas ni el historial semanal.</div>
+                        </div>
+                                            </div>
+
                 </div>
 
                 <!-- TAB: MCP -->
@@ -1604,10 +1696,12 @@
             $('axisEnableX').checked = true; $('axisEnableY').checked = true; $('axisEnableZ').checked = false;
             $('ignoreZForXY').checked = false;
             window.setEnabledAxesUI?.({X:true,Y:true,Z:false});
+            applyMonitorSettings();
             addLog('> Ajustes restaurados por defecto', 'success');
         }
 
         function saveSettings() {
+            applyMonitorSettings();
             addLog(`> Ajustes guardados correctamente`, 'success');
             closeSettings();
             if (!lens.classList.contains('expanded')) toggleTerminal();
@@ -1803,7 +1897,7 @@
 
             const theme = document.getElementById('app').getAttribute('data-theme');
             const isDark = theme !== 'white' && theme !== 'text';
-            const history = motorPulseHistory[motor] || [];
+            const history = (motorPulseHistory[motor] || []).slice(-monitorConfig.viewSamples);
             const color = motor === 'X' ? '#a855f7' : motor === 'Y' ? '#27C93F' : '#0A84FF';
             const latestRate = history.length ? history[history.length - 1].rate : 0;
             const peak = Math.max(1, ...history.map(sample => sample.rate));
@@ -1863,10 +1957,10 @@
             if (recordSample || (telemetryAvailable && !motorPulseHistory.X.length)) {
                 ['X', 'Y', 'Z'].forEach(axis => {
                     const value = stats?.[axis] || { count: 0, rate: 0 };
-                    const sample = { count: Number(value.count) || 0, rate: Number(value.rate) || 0 };
+                    const sample = { count: Number(value.count) || 0, rate: Number(value.rate) || 0, t: performance.now() };
                     const history = motorPulseHistory[axis];
                     history.push(sample);
-                    if (history.length > 120) history.shift();
+                    if (history.length > monitorConfig.historyMax) history.splice(0, history.length - monitorConfig.historyMax);
                 });
             }
             document.querySelectorAll('.motor-window:not(.editor-window)').forEach(win => {
@@ -1880,10 +1974,1108 @@
                 if (link) link.textContent = !connected ? 'Desconectado' : telemetryAvailable ? 'STM32 · en vivo' : 'Esperando STM32';
                 const canvas = win.querySelector('canvas');
                 if (canvas) drawGraphOnCanvas(canvas, axis);
+                renderMotorAnalysis(win, axis);
             });
         };
 
+        /* ============================================================
+           10b) MONITOR: CONFIGURACIÓN, ANÁLISIS, CAPTURAS Y CSV
+           ============================================================ */
+        const monitorConfig = {
+            advanced: false,
+            stepsPerMm: { X: 628, Y: 1256, Z: 0 },
+            thresholdHz: 5,
+            historyMax: 6000,
+            viewSamples: 120,
+            workArea: { X: 109, Y: 57 }
+        };
+
+        function monitorNum(id, fallback) {
+            const el = $(id);
+            const v = el ? parseFloat(el.value) : NaN;
+            return Number.isFinite(v) && v >= 0 ? v : fallback;
+        }
+
+        function applyMonitorSettings() {
+            monitorConfig.advanced = !!$('monitorAdvanced')?.checked;
+            monitorConfig.stepsPerMm = { X: monitorNum('monitorStepsX', 628), Y: monitorNum('monitorStepsY', 1256), Z: 0 };
+            monitorConfig.thresholdHz = monitorNum('monitorThreshold', 5);
+            monitorConfig.historyMax = Math.max(10, Math.round(monitorNum('monitorHistoryMax', 6000)));
+            monitorConfig.viewSamples = Math.max(10, Math.round(monitorNum('monitorViewSamples', 120)));
+            monitorConfig.workArea = { X: monitorNum('monitorAreaX', 109), Y: monitorNum('monitorAreaY', 57) };
+            ['X', 'Y', 'Z'].forEach(axis => {
+                const h = motorPulseHistory[axis];
+                if (h.length > monitorConfig.historyMax) h.splice(0, h.length - monitorConfig.historyMax);
+            });
+            refreshAllMotorWindows();
+        }
+
+        function refreshAllMotorWindows() {
+            document.querySelectorAll('.motor-window:not(.editor-window)').forEach(win => {
+                const axis = win.dataset.motor || 'X';
+                const canvas = win.querySelector('canvas');
+                if (canvas) drawGraphOnCanvas(canvas, axis);
+                renderMotorAnalysis(win, axis);
+            });
+        }
+
+        function computeAxisStats(axis) {
+            const h = motorPulseHistory[axis] || [];
+            if (h.length < 2) return null;
+            const spm = monitorConfig.stepsPerMm[axis] || 0;
+            const thr = monitorConfig.thresholdHz;
+            const first = h[0], last = h[h.length - 1];
+            const totalSec = Math.max(0, (last.t - first.t) / 1000);
+            const deltaCount = Math.max(0, last.count - first.count);
+            let areaPulses = 0, movingSec = 0;
+            const moving = [];
+            for (let i = 1; i < h.length; i++) {
+                const dt = Math.max(0, (h[i].t - h[i - 1].t) / 1000);
+                areaPulses += (h[i].rate + h[i - 1].rate) / 2 * dt;
+                if (h[i].rate > thr) { movingSec += dt; moving.push(h[i].rate); }
+            }
+            const maxRate = Math.max(...h.map(s => s.rate));
+            const sorted = moving.slice().sort((a, b) => a - b);
+            const p95 = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(0.95 * sorted.length))] : 0;
+            const meanRate = moving.length ? moving.reduce((a, b) => a + b, 0) / moving.length : 0;
+            const mm = spm ? deltaCount / spm : null;
+            const area = monitorConfig.workArea[axis];
+            return {
+                samples: h.length, totalSec, movingSec, deltaCount, areaPulses, mm,
+                pctArea: mm != null && area ? mm / area * 100 : null,
+                area, maxRate, meanRate, p95,
+                minRate: sorted.length ? sorted[0] : 0,
+                spm, thr,
+                maxMmS: spm ? maxRate / spm : null,
+                meanMmS: spm ? meanRate / spm : null
+            };
+        }
+
+        function fmtNum(v, d = 0) {
+            if (v == null || !Number.isFinite(v)) return '—';
+            return Number(v).toLocaleString('es-PE', { maximumFractionDigits: d, minimumFractionDigits: d });
+        }
+
+        function renderSampleTable(axis) {
+            const h = motorPulseHistory[axis] || [];
+            const spm = monitorConfig.stepsPerMm[axis] || 0;
+            const tail = h.slice(-12);
+            const t0 = h.length ? h[0].t : 0;
+            let html = '<table class="motor-samples"><tr><th>t (s)</th><th>Pulsos</th><th>Δ</th><th>Hz</th><th>mm/s</th></tr>';
+            tail.forEach((s, i) => {
+                const prev = h[h.length - tail.length + i - 1];
+                const d = prev ? s.count - prev.count : 0;
+                html += `<tr><td>${fmtNum((s.t - t0) / 1000, 2)}</td><td>${fmtNum(s.count)}</td><td>${fmtNum(d)}</td><td>${fmtNum(s.rate)}</td><td>${spm ? fmtNum(s.rate / spm, 2) : '—'}</td></tr>`;
+            });
+            return html + '</table>';
+        }
+
+        function renderMotorAnalysis(win, axis) {
+            const box = win.querySelector('.motor-analysis');
+            if (!box) return;
+            win.classList.toggle('advanced', monitorConfig.advanced);
+            const adv = win.querySelector('.motor-action[data-act="adv"]');
+            if (adv) adv.classList.toggle('active', monitorConfig.advanced);
+            if (axis === 'Z') {
+                box.innerHTML = '<span class="motor-an-note">Eje Z sin salida STEP en el firmware actual.</span>';
+                return;
+            }
+            const s = computeAxisStats(axis);
+            if (!s) {
+                box.innerHTML = '<span class="motor-an-note">Esperando muestras…</span>';
+                return;
+            }
+            const rows = [
+                ['Recorrido', `${fmtNum(s.mm, 2)} mm${s.pctArea != null ? ` · ${fmtNum(s.pctArea, 1)} % de ${s.area} mm` : ''}`],
+                ['Pulsos (Δ)', fmtNum(s.deltaCount)],
+                ['En movimiento', `${fmtNum(s.movingSec, 1)} s de ${fmtNum(s.totalSec, 1)} s`],
+                ['Hz máx / media / p95', `${fmtNum(s.maxRate)} / ${fmtNum(s.meanRate)} / ${fmtNum(s.p95)}`]
+            ];
+            if (monitorConfig.advanced) {
+                rows.push(['Área bajo la curva', `${fmtNum(s.areaPulses)} pulsos (∫Hz dt)`]);
+                rows.push(['Velocidad máx / media', s.maxMmS != null ? `${fmtNum(s.maxMmS, 2)} / ${fmtNum(s.meanMmS, 2)} mm/s` : '—']);
+                rows.push(['Hz mínimo en movimiento', fmtNum(s.minRate)]);
+                rows.push(['Muestras · pasos/mm · umbral', `${s.samples} · ${s.spm} · ${s.thr} Hz`]);
+            }
+            box.innerHTML = '<table>' + rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('') + '</table>'
+                + (monitorConfig.advanced ? renderSampleTable(axis) : '');
+        }
+
+        function monitorStamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
+
+        function downloadHref(href, name) {
+            const a = document.createElement('a');
+            a.href = href;
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+
+        function captureMotorChart(win) {
+            const axis = win.dataset.motor || 'X';
+            const src = win.querySelector('canvas');
+            if (!src || !src.width) { addLog('> Monitor: no hay gráfica para capturar', ''); return; }
+            const dpr = window.devicePixelRatio || 1;
+            const s = computeAxisStats(axis);
+            const info = s ? [
+                `Motor ${axis} · ${new Date().toLocaleString('es-PE')}`,
+                `Recorrido ${fmtNum(s.mm, 2)} mm · Δ pulsos ${fmtNum(s.deltaCount)} · muestras ${s.samples}`,
+                `Hz máx ${fmtNum(s.maxRate)} · media en movimiento ${fmtNum(s.meanRate)} · p95 ${fmtNum(s.p95)}`,
+                `En movimiento ${fmtNum(s.movingSec, 1)} s de ${fmtNum(s.totalSec, 1)} s`
+            ] : [`Motor ${axis} · sin muestras`];
+            const pad = 12 * dpr, lineH = 16 * dpr;
+            const headH = info.length * lineH + pad * 2;
+            const out = document.createElement('canvas');
+            out.width = src.width;
+            out.height = src.height + headH;
+            const ctx = out.getContext('2d');
+            ctx.fillStyle = '#16171b';
+            ctx.fillRect(0, 0, out.width, out.height);
+            ctx.fillStyle = 'rgba(255,255,255,.88)';
+            ctx.font = `${12 * dpr}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+            ctx.textBaseline = 'top';
+            info.forEach((line, i) => ctx.fillText(line, pad, pad + i * lineH));
+            ctx.drawImage(src, 0, headH);
+            const samples = motorPulseHistory[axis] || [];
+            const t0 = samples.length ? samples[0].t : 0;
+            const meta = {
+                axis,
+                created: new Date().toLocaleString('es-PE'),
+                stepsPerMm: monitorConfig.stepsPerMm,
+                thresholdHz: monitorConfig.thresholdHz,
+                stats: s ? { mm: s.mm, deltaCount: s.deltaCount, maxRate: s.maxRate, meanRate: s.meanRate, p95: s.p95, movingSec: s.movingSec, totalSec: s.totalSec } : null,
+                samples: samples.map(x => ({ t_s: +((x.t - t0) / 1000).toFixed(3), count: x.count, rate: x.rate }))
+            };
+            const api = window.cncApi;
+            if (!api) { addLog('> Monitor: bridge no disponible, captura no guardada', ''); return; }
+            meta.png = out.toDataURL('image/png').split(',')[1];
+            api.saveMonitorCapture(`motor_${axis}`, JSON.stringify(meta), res => {
+                if (res && res.ok) addLog(`> Monitor: captura guardada en la biblioteca (${res.id})`, 'success');
+                else addLog('> Monitor: error al guardar la captura', '');
+            });
+        }
+
+        function captureAllMotorCharts() {
+            const wins = [...document.querySelectorAll('.motor-window:not(.editor-window)')]
+                .filter(w => (w.dataset.motor || 'X') !== 'Z');
+            if (!wins.length) { addLog('> Monitor: abre una ventana de motor para capturar', ''); return; }
+            wins.forEach(captureMotorChart);
+        }
+
+        function exportMotorCsv(axes = ['X', 'Y']) {
+            const lines = ['eje,t_s,pulsos,delta_pulsos,hz,mm_s'];
+            axes.forEach(axis => {
+                const h = motorPulseHistory[axis] || [];
+                const spm = monitorConfig.stepsPerMm[axis] || 0;
+                const t0 = h.length ? h[0].t : 0;
+                h.forEach((s, i) => {
+                    const d = i ? s.count - h[i - 1].count : 0;
+                    lines.push([axis, ((s.t - t0) / 1000).toFixed(3), s.count, d, s.rate.toFixed(1), spm ? (s.rate / spm).toFixed(3) : ''].join(','));
+                });
+            });
+            if (lines.length === 1) { addLog('> Monitor: no hay muestras para exportar', ''); return; }
+            const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            downloadHref(url, `monitor_${axes.join('')}_${monitorStamp()}.csv`);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            addLog(`> Monitor: CSV exportado (${axes.join(', ')})`, 'success');
+        }
+
+        function clearMotorHistory() {
+            ['X', 'Y', 'Z'].forEach(axis => { motorPulseHistory[axis].length = 0; });
+            refreshAllMotorWindows();
+            addLog('> Monitor: historial limpio', 'success');
+        }
+
+        /* ============================================================
+           10c) EDITOR MONITOR: BIBLIOTECA, ANALISIS, EXPORTACION Y APPS
+           ============================================================ */
+        const MON_ED_LEFT = 64;
+        const monEd = { win: null, current: null, meta: null, pngPath: '', lastExport: '', view: 'chart', span: null, hover: null, measA: null, measB: null, resizeObs: null, apps: [], cursor: null, dragging: false, measure: false, playing: false, playTimer: null, playAcc: 0, speed: 0.25, cursorF: null, raf: null, markers: [], panPx: 0, drag: null };
+
+        function monEdEsc(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\x22/g, '&quot;');
+        }
+
+        function monEdNote(msg, ok = false) { addLog(`> Editor Monitor: ${msg}`, ok ? 'success' : ''); }
+        function monEdNone(reason = 'selecciona una captura primero') { monEdNote(reason); }
+
+        function monEdApi() {
+            if (!window.cncApi) { monEdNote('bridge no disponible'); return null; }
+            return window.cncApi;
+        }
+
+        function openMonitorEditor() {
+            if (monEd.win && document.body.contains(monEd.win)) {
+                monEd.win.style.display = 'flex';
+                monEd.win.style.zIndex = ++zCounter;
+                activeWindow = monEd.win;
+                monEdRefreshList();
+                return;
+            }
+            windowCounter++; zCounter++;
+            const win = document.createElement('div');
+            win.className = 'motor-window editor-window monitor-editor glass';
+            win.style.left = '150px';
+            win.style.top = '80px';
+            win.style.width = '960px';
+            win.style.height = '580px';
+            win.style.zIndex = zCounter;
+            win.style.display = 'flex';
+            win.innerHTML = `
+                <div class="motor-titlebar">
+                    <div class="traffic-lights">
+                        <button class="tl tl-close" aria-label="Cerrar"></button>
+                        <button class="tl tl-min" aria-label="Minimizar"></button>
+                        <button class="tl tl-max" aria-label="Maximizar"></button>
+                    </div>
+                    <div class="motor-tabs"><span class="motor-tab active">Editor Monitor</span></div>
+                    <div class="tl-spacer"></div>
+                </div>
+                <div class="monitor-ed-body">
+                    <aside class="monitor-ed-list">
+                        <div class="monitor-ed-group">
+                            <h4>Capturas</h4>
+                            <div class="monitor-ed-items"></div>
+                            <button class="motor-action" data-ed="refresh">Actualizar lista</button>
+                        </div>
+                    </aside>
+                    <section class="monitor-ed-main">
+                        <div class="monitor-ed-toolbar">
+                            <button class="motor-action active" data-ed="view-chart">Datos</button>
+                            <button class="motor-action" data-ed="view-img">Imagen</button>
+                            <button class="motor-action" data-ed="zoom-in">Zoom +</button>
+                            <button class="motor-action" data-ed="zoom-out">Zoom -</button>
+                            <button class="motor-action" data-ed="zoom-reset">Todo</button>
+                            <button class="motor-action" data-ed="play">Reproducir</button>
+                            <button class="motor-action" data-ed="speed">0.25x</button>
+                            <button class="motor-action" data-ed="measure">Medir: off</button>
+                            <button class="motor-action" data-ed="measure-clear">Limpiar medida</button>
+                            <button class="motor-action" data-ed="clear-marks">Limpiar marcas</button>
+                            <button class="motor-action" data-ed="delete">Eliminar</button>
+                        </div>
+                        <div class="monitor-ed-stage">
+                            <canvas class="monitor-ed-canvas"></canvas>
+                            <img class="monitor-ed-img" alt="Captura" style="display:none">
+                        </div>
+                        <div class="monitor-ed-readout">Selecciona una captura. Clic: mueve el cursor azul. Arrastrar: mueve la vista. Shift+clic: marca roja fija. Rueda: zoom. Doble clic: reiniciar vista.</div>
+                        <div class="monitor-ed-marks"></div>
+                    </section>
+                    <aside class="monitor-ed-tools">
+                        <div class="monitor-ed-group">
+                            <h4>Imagen</h4>
+                            <button class="motor-action" data-ed="exp-png">Exportar PNG</button>
+                            <button class="motor-action" data-ed="exp-jpg">Exportar JPG</button>
+                        </div>
+                        <div class="monitor-ed-group">
+                            <h4>Datos</h4>
+                            <button class="motor-action" data-ed="exp-csv">Exportar CSV</button>
+                            <button class="motor-action" data-ed="exp-json">Exportar JSON</button>
+                        </div>
+                        <div class="monitor-ed-group">
+                            <h4>Codigo</h4>
+                            <button class="motor-action" data-ed="exp-py">Exportar Python</button>
+                            <button class="motor-action" data-ed="exp-c">Exportar C</button>
+                            <button class="motor-action" data-ed="copy-py">Copiar Python</button>
+                            <button class="motor-action" data-ed="copy-c">Copiar C</button>
+                            <button class="motor-action" data-ed="copy-b64">Copiar base64</button>
+                            <button class="motor-action" data-ed="copy-uri">Copiar data URI</button>
+                        </div>
+                        <div class="monitor-ed-group">
+                            <h4>Abrir con</h4>
+                            <select id="monEdAppFilter">
+                                <option value="image">Apps de imagenes</option>
+                                <option value="">Todas las apps</option>
+                            </select>
+                            <select id="monEdAppSelect"></select>
+                            <button class="motor-action" data-ed="open-capture">Abrir captura</button>
+                            <button class="motor-action" data-ed="open-export">Abrir ultima exportacion</button>
+                            <button class="motor-action" data-ed="apps-refresh">Actualizar apps</button>
+                        </div>
+                        <div class="monitor-ed-group">
+                            <h4>Carpetas</h4>
+                            <button class="motor-action" data-ed="reveal-lib">Abrir carpeta de capturas</button>
+                            <button class="motor-action" data-ed="reveal-export">Mostrar ultima exportacion</button>
+                        </div>
+                    </aside>
+                </div>
+            `;
+            win.addEventListener('pointerdown', () => { win.style.zIndex = ++zCounter; activeWindow = win; });
+            win.querySelector('.tl-close').addEventListener('click', e => { e.stopPropagation(); monEdClose(); });
+            win.querySelector('.tl-min').addEventListener('click', e => {
+                e.stopPropagation();
+                if (win.classList.contains('maximized')) toggleMaximize(win);
+                toggleMinimize(win);
+            });
+            win.querySelector('.tl-max').addEventListener('click', e => {
+                e.stopPropagation();
+                if (win.classList.contains('minimized')) toggleMinimize(win);
+                toggleMaximize(win);
+            });
+            win.querySelector('.motor-titlebar').addEventListener('dblclick', e => {
+                if (!e.target.closest('.tl')) win.querySelector('.tl-max').click();
+            });
+            monEdDragable(win);
+
+            const actions = {
+                'refresh': monEdRefreshList,
+                'view-chart': () => monEdSetView('chart'),
+                'view-img': () => monEdSetView('img'),
+                'zoom-in': () => monEdZoom(0.8),
+                'zoom-out': () => monEdZoom(1.25),
+                'zoom-reset': monEdZoomReset,
+                'measure-clear': monEdMeasureClear,
+                'play': monEdTogglePlay,
+                'speed': monEdCycleSpeed,
+                'measure': monEdToggleMeasure,
+                'clear-marks': monEdClearMarks,
+                'delete': monEdDelete,
+                'exp-png': monEdExportPng,
+                'exp-jpg': monEdExportJpg,
+                'exp-csv': () => monEdExportText('csv'),
+                'exp-json': () => monEdExportText('json'),
+                'exp-py': () => monEdExportText('py'),
+                'exp-c': () => monEdExportText('c'),
+                'copy-py': () => monEdCopyCode('py'),
+                'copy-c': () => monEdCopyCode('c'),
+                'copy-b64': monEdCopyBase64,
+                'copy-uri': monEdCopyDataUri,
+                'apps-refresh': monEdLoadApps,
+                'open-capture': () => monEdOpenWith(monEd.pngPath),
+                'open-export': () => monEdOpenWith(monEd.lastExport),
+                'reveal-lib': () => monEdReveal(''),
+                'reveal-export': () => (monEd.lastExport ? monEdReveal(monEd.lastExport) : monEdNone('todavia no hay exportacion'))
+            };
+            win.addEventListener('click', e => {
+                const b = e.target.closest('[data-ed]');
+                if (!b) return;
+                const fn = actions[b.dataset.ed];
+                if (fn) fn();
+            });
+            win.querySelector('.monitor-ed-items').addEventListener('click', e => {
+                const item = e.target.closest('[data-id]');
+                if (item) monEdLoad(item.dataset.id);
+            });
+            win.querySelector('#monEdAppFilter').addEventListener('change', monEdLoadApps);
+            win.querySelector('.monitor-ed-marks').addEventListener('click', e => {
+                const b = e.target.closest('[data-unmark]');
+                if (b) monEdUnmark(Number(b.dataset.unmark));
+            });
+            document.addEventListener('keydown', e => {
+                if (e.monEdHandled) return;
+                e.monEdHandled = true;
+                if (!monEd.win || activeWindow !== monEd.win) return;
+                if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+                const step = e.shiftKey ? 10 : 1;
+                if (e.key === 'ArrowRight') { monEdMoveCursor(step); e.preventDefault(); }
+                else if (e.key === 'ArrowLeft') { monEdMoveCursor(-step); e.preventDefault(); }
+                else if (e.key === 'Home' && monEd.span) { monEdPlaceCursor(monEd.span[0]); e.preventDefault(); }
+                else if (e.key === 'End' && monEd.span) { monEdPlaceCursor(monEd.span[1]); e.preventDefault(); }
+                else if (e.key === ' ') { monEdTogglePlay(); e.preventDefault(); }
+            });
+
+            const canvas = win.querySelector('.monitor-ed-canvas');
+            canvas.addEventListener('pointerdown', e => {
+                canvas.setPointerCapture(e.pointerId);
+                monEd.drag = { x: e.clientX, moved: false, shift: e.shiftKey };
+            });
+            canvas.addEventListener('pointermove', e => {
+                monEd.hover = monEdIndexAt(e);
+                if (monEd.drag) {
+                    const dx = e.clientX - monEd.drag.x;
+                    if (Math.abs(dx) > 3 || monEd.drag.moved) {
+                        monEd.drag.moved = true;
+                        monEd.drag.x = e.clientX;
+                        monEdPan(dx);
+                    }
+                }
+                monEdDraw();
+            });
+            canvas.addEventListener('pointerup', e => {
+                const d = monEd.drag;
+                monEd.drag = null;
+                if (d && !d.moved) monEdClickAt(monEdIndexAt(e), d.shift || e.shiftKey);
+            });
+            canvas.addEventListener('pointercancel', () => { monEd.drag = null; });
+            canvas.addEventListener('mouseleave', () => { monEd.hover = null; monEdDraw(); });
+            canvas.addEventListener('dblclick', monEdZoomReset);
+            canvas.addEventListener('wheel', e => {
+                e.preventDefault();
+                monEd.hover = monEdIndexAt(e);
+                monEdZoom(e.deltaY < 0 ? 0.8 : 1.25);
+            }, { passive: false });
+
+            monEd.win = win;
+            windowsLayer.appendChild(win);
+            activeWindow = win;
+            monEd.resizeObs = new ResizeObserver(() => monEdDraw());
+            monEd.resizeObs.observe(win.querySelector('.monitor-ed-stage'));
+            monEdReadoutDefault();
+            monEdRefreshList();
+            monEdLoadApps();
+            monEdDraw();
+        }
+
+        function monEdClose() {
+            if (monEd.playing) monEdTogglePlay();
+            if (monEd.resizeObs) monEd.resizeObs.disconnect();
+            if (monEd.win) monEd.win.remove();
+            monEd.win = null;
+            monEd.resizeObs = null;
+        }
+
+        function monEdDragable(win) {
+            const bar = win.querySelector('.motor-titlebar');
+            let drag = null;
+            bar.addEventListener('pointerdown', e => {
+                if (e.target.closest('.tl')) return;
+                drag = { x: e.clientX, y: e.clientY, l: win.offsetLeft, t: win.offsetTop };
+                win.classList.add('dragging');
+                bar.setPointerCapture(e.pointerId);
+            });
+            let monRaf = 0, monEv = null;
+            bar.addEventListener('pointermove', e => {
+                if (!drag) return;
+                monEv = e;
+                if (monRaf) return;
+                monRaf = requestAnimationFrame(() => {
+                    monRaf = 0;
+                    win.style.left = (drag.l + monEv.clientX - drag.x) + 'px';
+                    win.style.top = Math.max(0, drag.t + monEv.clientY - drag.y) + 'px';
+                });
+            });
+            bar.addEventListener('pointerup', () => { drag = null; win.classList.remove('dragging'); });
+            bar.addEventListener('pointercancel', () => { drag = null; win.classList.remove('dragging'); });
+        }
+
+        function monEdRefreshList() {
+            const api = monEdApi();
+            if (!api || !monEd.win) return;
+            api.listMonitorCaptures(items => {
+                const list = items || [];
+                monEd.win.querySelector('.monitor-ed-items').innerHTML = list.length
+                    ? list.map(it => `<button class="monitor-ed-item ${it.id === monEd.current ? 'active' : ''}" data-id="${monEdEsc(it.id)}"><strong>Motor ${monEdEsc(it.axis || '?')}</strong><span>${monEdEsc(it.created || '')}</span><span>${it.samples} muestras</span></button>`).join('')
+                    : '<div class="motor-an-note">Sin capturas todavia. Usa Capturar PNG en una ventana de motor.</div>';
+            });
+        }
+
+        function monEdLoad(id) {
+            const api = monEdApi();
+            if (!api) return;
+            api.readMonitorCapture(id, data => {
+                if (!data || !data.ok) { monEdNote('no se pudo abrir la captura'); return; }
+                monEd.current = data.id;
+                monEd.meta = data;
+                monEd.meta.samples = data.samples || [];
+                monEd.pngPath = data.pngPath || '';
+                monEd.span = [0, Math.max(0, monEd.meta.samples.length - 1)];
+                if (monEd.playing) monEdTogglePlay();
+                monEd.hover = null; monEd.measA = null; monEd.measB = null;
+                monEd.cursor = 0;
+                monEd.cursorF = 0;
+                monEd.markers = []; monEd.panPx = 0;
+                monEdRenderMarks();
+                monEdCursorReadout();
+                monEdRefreshList();
+                monEdDraw();
+            });
+        }
+
+        function monEdReadoutDefault() {
+            const m = monEd.meta;
+            const box = monEd.win ? monEd.win.querySelector('.monitor-ed-readout') : null;
+            if (!box || !m) return;
+            const st = m.stats;
+            box.textContent = st
+                ? `Motor ${m.axis} · recorrido ${fmtNum(st.mm, 2)} mm · Δ pulsos ${fmtNum(st.deltaCount)} · Hz max ${fmtNum(st.maxRate)} · media en movimiento ${fmtNum(st.meanRate)} Hz · ${fmtNum(st.movingSec, 1)} s en movimiento`
+                : `Motor ${m.axis} · sin estadisticas`;
+        }
+
+        function monEdHoverReadout() {
+            const m = monEd.meta;
+            const box = monEd.win ? monEd.win.querySelector('.monitor-ed-readout') : null;
+            if (!m || !box || monEd.hover == null) return;
+            const s = m.samples;
+            const x = s[monEd.hover];
+            if (!x) return;
+            const prev = s[monEd.hover - 1];
+            const d = prev ? x.count - prev.count : 0;
+            const spm = (m.stepsPerMm && m.stepsPerMm[m.axis]) || 0;
+            let text = `t ${fmtNum(x.t_s, 2)} s · pulsos ${fmtNum(x.count)} · Δ ${fmtNum(d)} · ${fmtNum(x.rate)} Hz`;
+            if (spm) text += ` · ${fmtNum(x.rate / spm, 2)} mm/s`;
+            if (monEd.measA != null) text += ` | ${monEdMeasureText()}`;
+            box.textContent = text;
+        }
+
+        function monEdMeasureText() {
+            const m = monEd.meta;
+            const s = m && m.samples ? m.samples : [];
+            if (monEd.measA == null) return '';
+            if (monEd.measB == null) return 'Medida: marca el segundo punto';
+            const a = s[monEd.measA], b = s[monEd.measB];
+            if (!a || !b) return '';
+            const dt = Math.abs(b.t_s - a.t_s);
+            const dHz = b.rate - a.rate;
+            const dCount = Math.abs(b.count - a.count);
+            const spm = (m.stepsPerMm && m.stepsPerMm[m.axis]) || 0;
+            const mm = spm ? dCount / spm : null;
+            const v = mm != null && dt > 0 ? mm / dt : null;
+            let text = `Medida: Δt ${fmtNum(dt, 3)} s · ΔHz ${fmtNum(dHz, 1)} · Δpulsos ${fmtNum(dCount)}`;
+            if (mm != null) text += ` · ${fmtNum(mm, 3)} mm · ${fmtNum(v, 2)} mm/s media`;
+            return text;
+        }
+
+        function monEdIndexAt(e) {
+            const canvas = monEd.win.querySelector('.monitor-ed-canvas');
+            const r = canvas.getBoundingClientRect();
+            const span = monEd.span || [0, 0];
+            const a = span[0], b = span[1];
+            const R = r.width - 16;
+            const f = Math.min(1, Math.max(0, (e.clientX - r.left - MON_ED_LEFT) / Math.max(1, R - MON_ED_LEFT)));
+            return Math.round(a + f * (b - a));
+        }
+
+        function monEdMeasureClick(idx) {
+            if (!monEd.meta) return;
+            if (monEd.measA == null || monEd.measB != null) { monEd.measA = idx; monEd.measB = null; }
+            else monEd.measB = idx;
+            monEdCursorReadout();
+            monEdDraw();
+        }
+
+        function monEdMeasureClear() {
+            monEd.measA = null; monEd.measB = null;
+            monEdReadoutDefault();
+            monEdDraw();
+        }
+
+        function monEdCursorReadout() {
+            const m = monEd.meta;
+            const box = monEd.win ? monEd.win.querySelector('.monitor-ed-readout') : null;
+            if (!m || !box || monEd.cursor == null) return;
+            const s = m.samples;
+            const i = monEd.cursor;
+            const x = s[i];
+            if (!x) return;
+            const d = i > 0 ? x.count - s[i - 1].count : 0;
+            const spm = (m.stepsPerMm && m.stepsPerMm[m.axis]) || 0;
+            let text = `Cursor ${i + 1}/${s.length} · t ${fmtNum(x.t_s, 2)} s · pulsos ${fmtNum(x.count)} · Δ ${fmtNum(d)} · ${fmtNum(x.rate)} Hz`;
+            if (spm) text += ` · ${fmtNum(x.rate / spm, 2)} mm/s · desde inicio ${fmtNum((x.count - s[0].count) / spm, 2)} mm`;
+            if (monEd.measA != null) text += ' | ' + monEdMeasureText();
+            box.textContent = text;
+        }
+
+        function monEdMoveCursor(delta) {
+            if (!monEd.meta || !monEd.meta.samples.length) return;
+            const base = monEd.cursor != null ? monEd.cursor : 0;
+            monEdPlaceCursor(Math.max(0, Math.min(monEd.meta.samples.length - 1, base + delta)));
+        }
+
+        function monEdPlaceCursor(idx) {
+            if (!monEd.meta) return;
+            if (monEd.measure) { monEdMeasureClick(idx); return; }
+            monEd.cursor = idx;
+            monEd.cursorF = idx;
+            monEdCursorReadout();
+            monEdDraw();
+        }
+
+        function monEdToggleMeasure() {
+            monEd.measure = !monEd.measure;
+            const btn = monEd.win.querySelector('[data-ed="measure"]');
+            if (btn) btn.textContent = monEd.measure ? 'Medir: on' : 'Medir: off';
+            monEdNote(monEd.measure ? 'modo medida activo: haz clic en dos puntos' : 'modo medida desactivado');
+        }
+
+        function monEdCycleSpeed() {
+            const speeds = [0.1, 0.25, 0.5, 1, 5, 20, 60];
+            monEd.speed = speeds[(speeds.indexOf(monEd.speed) + 1) % speeds.length];
+            const btn = monEd.win.querySelector('[data-ed="speed"]');
+            if (btn) btn.textContent = monEd.speed + 'x';
+        }
+
+        function monEdSyncCursor() { monEd.cursor = Math.round(monEd.cursorF); }
+
+        function monEdTogglePlay() {
+            if (!monEd.meta || !monEd.meta.samples.length) return monEdNone();
+            monEd.playing = !monEd.playing;
+            const btn = monEd.win.querySelector('[data-ed="play"]');
+            if (btn) btn.textContent = monEd.playing ? 'Pausa' : 'Reproducir';
+            if (monEd.raf) cancelAnimationFrame(monEd.raf);
+            monEd.raf = null;
+            if (!monEd.playing) return;
+            const s = monEd.meta.samples;
+            const last = s.length - 1;
+            if (monEd.cursorF == null || monEd.cursorF >= last) monEd.cursorF = monEd.span[0];
+            const total = (s[last].t_s - s[0].t_s) || 1;
+            const dtS = total / Math.max(1, last);
+            let prev = performance.now();
+            const tick = now => {
+                if (!monEd.playing) return;
+                const dtReal = Math.min(0.2, Math.max(0, (now - prev) / 1000));
+                prev = now;
+                monEd.cursorF = Math.min(last, monEd.cursorF + monEd.speed * dtReal / dtS);
+                if (monEd.cursorF >= last) {
+                    monEdSyncCursor();
+                    monEdCursorReadout();
+                    monEdDraw();
+                    monEdTogglePlay();
+                    return;
+                }
+                const a = monEd.span[0], b = monEd.span[1], len = b - a;
+                if (monEd.cursorF > b || monEd.cursorF < a) {
+                    const na = Math.max(0, Math.min(last - len, Math.round(monEd.cursorF - len * 0.1)));
+                    monEd.span = [na, na + len];
+                }
+                monEdSyncCursor();
+                monEdCursorReadout();
+                monEdDraw();
+                monEd.raf = requestAnimationFrame(tick);
+            };
+            monEd.raf = requestAnimationFrame(tick);
+        }
+
+        function monEdPan(dx) {
+            if (!monEd.meta || !monEd.span) return;
+            const total = monEd.meta.samples.length - 1;
+            const a = monEd.span[0], len = monEd.span[1] - a;
+            if (len <= 0 || len >= total) return;
+            const canvas = monEd.win.querySelector('.monitor-ed-canvas');
+            const pw = Math.max(1, canvas.getBoundingClientRect().width - 16 - MON_ED_LEFT);
+            monEd.panPx += dx;
+            const delta = Math.trunc(-monEd.panPx * len / pw);
+            if (!delta) return;
+            const na = Math.max(0, Math.min(total - len, a + delta));
+            const used = na - a;
+            monEd.span = [na, na + len];
+            monEd.panPx = used === delta ? monEd.panPx + used * pw / len : 0;
+            monEdDraw();
+        }
+
+        function monEdClickAt(idx, shift) {
+            if (!monEd.meta) return;
+            if (monEd.measure) { monEdMeasureClick(idx); return; }
+            if (shift) { monEdAddMarker(idx); return; }
+            monEdPlaceCursor(idx);
+        }
+
+        function monEdAddMarker(idx) {
+            if (!monEd.meta) return;
+            if (monEd.markers.indexOf(idx) < 0) monEd.markers.push(idx);
+            monEdRenderMarks();
+            monEdDraw();
+        }
+
+        function monEdUnmark(idx) {
+            monEd.markers = monEd.markers.filter(v => v !== idx);
+            monEdRenderMarks();
+            monEdDraw();
+        }
+
+        function monEdClearMarks() {
+            monEd.markers = [];
+            monEdRenderMarks();
+            monEdDraw();
+        }
+
+        function monEdRenderMarks() {
+            const box = monEd.win ? monEd.win.querySelector('.monitor-ed-marks') : null;
+            if (!box || !monEd.meta) return;
+            const s = monEd.meta.samples;
+            box.innerHTML = monEd.markers.map((idx, n) => {
+                const x = s[idx];
+                if (!x) return '';
+                return `<div class="monitor-ed-mark"><span class="dot"></span><span>M${n + 1} · t ${fmtNum(x.t_s, 2)} s · ${fmtNum(x.count)} pulsos · ${fmtNum(x.rate)} Hz</span><button class="motor-action" data-unmark="${idx}">Quitar</button></div>`;
+            }).join('');
+        }
+
+        function monEdZoom(factor) {
+            if (!monEd.meta || !monEd.meta.samples.length) return;
+            const total = monEd.meta.samples.length - 1;
+            const a = monEd.span[0], b = monEd.span[1];
+            const center = monEd.hover != null && monEd.hover >= a && monEd.hover <= b ? monEd.hover : Math.round((a + b) / 2);
+            const width = Math.max(4, Math.min(total, Math.round((b - a) * factor)));
+            const f = (center - a) / Math.max(1, b - a);
+            let na = Math.round(center - f * width);
+            na = Math.max(0, Math.min(total - width, na));
+            monEd.span = [Math.max(0, na), Math.min(total, na + width)];
+            monEdDraw();
+        }
+
+        function monEdZoomReset() {
+            if (!monEd.meta) return;
+            monEd.span = [0, monEd.meta.samples.length - 1];
+            monEdDraw();
+        }
+
+        function monEdSetView(v) {
+            monEd.view = v;
+            monEd.win.querySelectorAll('[data-ed="view-chart"],[data-ed="view-img"]').forEach(b => {
+                b.classList.toggle('active', b.dataset.ed === (v === 'chart' ? 'view-chart' : 'view-img'));
+            });
+            monEdDraw();
+        }
+
+        function monEdColor(axis) { return axis === 'X' ? '#a855f7' : axis === 'Y' ? '#27C93F' : '#0A84FF'; }
+
+        function monEdDraw() {
+            const win = monEd.win;
+            if (!win) return;
+            const canvas = win.querySelector('.monitor-ed-canvas');
+            const img = win.querySelector('.monitor-ed-img');
+            const stage = win.querySelector('.monitor-ed-stage');
+            const m = monEd.meta;
+            canvas.style.display = monEd.view === 'chart' ? 'block' : 'none';
+            img.style.display = monEd.view === 'img' ? 'block' : 'none';
+            if (monEd.view === 'img') {
+                if (m && img.dataset.id !== monEd.current) { img.src = 'data:image/png;base64,' + m.png; img.dataset.id = monEd.current; }
+                return;
+            }
+            const dpr = window.devicePixelRatio || 1;
+            const w = stage.clientWidth, h = stage.clientHeight;
+            if (w <= 0 || h <= 0) return;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            const samples = m && m.samples ? m.samples : [];
+            if (samples.length < 2 || !monEd.span) {
+                ctx.fillStyle = 'rgba(128,128,128,.9)';
+                ctx.font = '13px system-ui';
+                ctx.fillText('Sin muestras en esta captura', 20, 30);
+                return;
+            }
+            const a = monEd.span[0], b = monEd.span[1];
+            const vis = samples.slice(a, b + 1);
+            const peak = Math.max(1, ...vis.map(s => s.rate)) * 1.12;
+            const L = MON_ED_LEFT, R = w - 16, T = 16, B = h - 30;
+            const pw = R - L, ph = B - T;
+            const xOf = i => L + (i - a) / Math.max(1, b - a) * pw;
+            const yOf = r => B - Math.max(0, r) / peak * ph;
+            const grid = 'rgba(128,128,128,.25)', text = 'rgba(128,128,128,.95)';
+            ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+            ctx.lineWidth = 1;
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            for (let g = 0; g <= 4; g++) {
+                const y = B - ph * g / 4;
+                ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(R, y); ctx.stroke();
+                ctx.fillStyle = text; ctx.fillText(fmtNum(peak * g / 4), L - 6, y);
+            }
+            const tDec = (samples[b].t_s - samples[a].t_s) < 2 ? 3 : 2;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            for (let g = 0; g <= 4; g++) {
+                const i = a + Math.round((b - a) * g / 4);
+                const x = xOf(i);
+                ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke();
+                ctx.fillStyle = text; ctx.fillText(fmtNum(samples[i].t_s, tDec) + ' s', x, B + 8);
+            }
+            ctx.beginPath();
+            vis.forEach((s, k) => { const x = xOf(a + k), y = yOf(s.rate); if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+            ctx.strokeStyle = monEdColor(m.axis); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+            if (monEd.hover != null && monEd.hover >= a && monEd.hover <= b) {
+                const x = xOf(monEd.hover);
+                ctx.strokeStyle = 'rgba(128,128,128,.85)'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke();
+                ctx.fillStyle = monEdColor(m.axis);
+                ctx.beginPath(); ctx.arc(x, yOf(samples[monEd.hover].rate), 3.5, 0, Math.PI * 2); ctx.fill();
+            }
+            if (monEd.cursorF != null && monEd.cursorF >= a && monEd.cursorF <= b) {
+                const f = monEd.cursorF, i0 = Math.floor(f), i1 = Math.min(samples.length - 1, i0 + 1), fr = f - i0;
+                const rateF = samples[i0].rate + (samples[i1].rate - samples[i0].rate) * fr;
+                const cx = xOf(f), cy = yOf(rateF);
+                ctx.strokeStyle = '#0a84ff'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(cx, T); ctx.lineTo(cx, B); ctx.stroke();
+                ctx.fillStyle = '#0a84ff';
+                ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 1; ctx.stroke();
+                ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+                const label = `${fmtNum(samples[monEd.cursor].count)} pulsos · ${fmtNum(samples[monEd.cursor].rate)} Hz`;
+                const lx = cx + 150 > R ? cx - 156 : cx + 6;
+                ctx.fillText(label, lx, T + 2);
+            }
+            (monEd.markers || []).forEach((mi, n) => {
+                if (mi < a || mi > b) return;
+                const mx = xOf(mi), my = yOf(samples[mi].rate);
+                ctx.fillStyle = '#ff3b30';
+                ctx.beginPath(); ctx.arc(mx, my, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                ctx.fillText('M' + (n + 1), mx, my - 6);
+            });
+            [[monEd.measA, '#bf5af2'], [monEd.measB, '#ff9f0a']].forEach(pair => {
+                const idx = pair[0], col = pair[1];
+                if (idx == null || idx < a || idx > b) return;
+                const x = xOf(idx);
+                ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+                ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke();
+                ctx.setLineDash([]);
+            });
+        }
+
+        function monEdBuildText(kind) {
+            const m = monEd.meta;
+            const s = m.samples || [];
+            const axis = m.axis || 'X';
+            const spm = (m.stepsPerMm && m.stepsPerMm[axis]) || 0;
+            const f = (x, d) => Number(x).toFixed(d);
+            if (kind === 'csv') {
+                return ['t_s,pulsos,delta_pulsos,hz,mm_s']
+                    .concat(s.map((x, i) => [f(x.t_s, 3), x.count, i ? x.count - s[i - 1].count : 0, f(x.rate, 1), spm ? f(x.rate / spm, 3) : ''].join(',')))
+                    .join('\n') + '\n';
+            }
+            if (kind === 'json') {
+                const copy = Object.assign({}, m);
+                delete copy.png; delete copy.pngPath;
+                return JSON.stringify(copy, null, 2);
+            }
+            if (kind === 'py') {
+                return [
+                    `# Captura del monitor de motores · eje ${axis}`,
+                    `# id: ${m.id}`,
+                    `STEPS_PER_MM = ${spm}`,
+                    `# (t_s, pulsos_acumulados, hz)`,
+                    `SAMPLES = [`,
+                    ...s.map(x => `    (${f(x.t_s, 3)}, ${x.count}, ${f(x.rate, 1)}),`),
+                    `]`,
+                    ''
+                ].join('\n');
+            }
+            return [
+                `/* Captura del monitor de motores · eje ${axis} · ${m.id} */`,
+                `#define MONITOR_SAMPLES ${s.length}`,
+                `#define MONITOR_STEPS_PER_MM ${spm}`,
+                `static const float monitor_t_s[MONITOR_SAMPLES] = {${s.map(x => f(x.t_s, 3) + 'f').join(', ')}};`,
+                `static const uint32_t monitor_pulses[MONITOR_SAMPLES] = {${s.map(x => x.count + 'u').join(', ')}};`,
+                `static const float monitor_hz[MONITOR_SAMPLES] = {${s.map(x => f(x.rate, 1) + 'f').join(', ')}};`,
+                ''
+            ].join('\n');
+        }
+
+        function monEdSaveDialog(name, content, isB64, filter) {
+            const api = monEdApi();
+            if (!api) return;
+            api.saveWithDialog(name, content, isB64, filter, res => {
+                if (res && res.ok) { monEd.lastExport = res.path; monEdNote(`guardado en ${res.path}`, true); }
+                else if (res && !res.cancelled) monEdNote(res.error || 'exportacion no completada');
+            });
+        }
+
+        function monEdExportPng() {
+            if (!monEd.meta) return monEdNone();
+            monEdSaveDialog(`${monEd.meta.id}.png`, monEd.meta.png, true, 'PNG (*.png)');
+        }
+
+        function monEdExportJpg() {
+            if (!monEd.meta) return monEdNone();
+            const img = new Image();
+            img.onload = () => {
+                const c = document.createElement('canvas');
+                c.width = img.naturalWidth;
+                c.height = img.naturalHeight;
+                const ctx = c.getContext('2d');
+                ctx.fillStyle = '#16171b';
+                ctx.fillRect(0, 0, c.width, c.height);
+                ctx.drawImage(img, 0, 0);
+                monEdSaveDialog(`${monEd.meta.id}.jpg`, c.toDataURL('image/jpeg', 0.92).split(',')[1], true, 'JPEG (*.jpg *.jpeg)');
+            };
+            img.src = 'data:image/png;base64,' + monEd.meta.png;
+        }
+
+        function monEdExportText(kind) {
+            if (!monEd.meta) return monEdNone();
+            if (!monEd.meta.samples.length) return monEdNone('esta captura no tiene muestras');
+            const map = { csv: ['csv', 'CSV (*.csv)'], json: ['json', 'JSON (*.json)'], py: ['py', 'Python (*.py)'], c: ['c', 'C (*.c *.h)'] };
+            const ext = map[kind][0], filter = map[kind][1];
+            monEdSaveDialog(`${monEd.meta.id}.${ext}`, monEdBuildText(kind), false, filter);
+        }
+
+        function monEdCopyCode(kind) {
+            if (!monEd.meta) return monEdNone();
+            if (!monEd.meta.samples.length) return monEdNone('esta captura no tiene muestras');
+            const api = monEdApi();
+            if (!api) return;
+            api.copyText(monEdBuildText(kind));
+            monEdNote(`codigo ${kind === 'py' ? 'Python' : 'C'} copiado`, true);
+        }
+
+        function monEdCopyBase64() {
+            if (!monEd.meta) return monEdNone();
+            const api = monEdApi();
+            if (api) api.copyText(monEd.meta.png);
+            monEdNote('base64 de la imagen copiado', true);
+        }
+
+        function monEdCopyDataUri() {
+            if (!monEd.meta) return monEdNone();
+            const api = monEdApi();
+            if (api) api.copyText('data:image/png;base64,' + monEd.meta.png);
+            monEdNote('data URI copiado', true);
+        }
+
+        function monEdLoadApps() {
+            const api = monEdApi();
+            if (!api || !monEd.win) return;
+            const mode = monEd.win.querySelector('#monEdAppFilter').value;
+            api.listDesktopApps(mode, apps => {
+                monEd.apps = apps || [];
+                monEd.win.querySelector('#monEdAppSelect').innerHTML = monEd.apps.length
+                    ? monEd.apps.map(a => `<option value="${monEdEsc(a.path)}">${monEdEsc(a.name)}</option>`).join('')
+                    : '<option value="">Sin aplicaciones</option>';
+            });
+        }
+
+        function monEdOpenWith(target) {
+            const api = monEdApi();
+            if (!api) return;
+            const desktop = monEd.win.querySelector('#monEdAppSelect').value;
+            if (!desktop) return monEdNote('elige una aplicacion');
+            if (!target) return monEdNote('no hay archivo: exporta o selecciona una captura');
+            api.openWithApp(desktop, target, res => {
+                if (res && res.ok) monEdNote('abriendo con la aplicacion seleccionada', true);
+                else monEdNote(res && res.error ? res.error : 'no se pudo abrir');
+            });
+        }
+
+        function monEdReveal(path) {
+            const api = monEdApi();
+            if (!api) return;
+            api.revealInFileManager(path, res => {
+                if (!res || !res.ok) monEdNote(res && res.error ? res.error : 'no se pudo abrir el administrador de archivos');
+            });
+        }
+
+        function monEdDelete() {
+            const api = monEdApi();
+            if (!api || !monEd.current) return monEdNone();
+            if (!window.confirm('Eliminar esta captura de la biblioteca?')) return;
+            const id = monEd.current;
+            api.deleteMonitorCapture(id, ok => {
+                if (!ok) return monEdNote('no se pudo eliminar');
+                monEd.current = null; monEd.meta = null; monEd.pngPath = ''; monEd.span = null;
+                monEd.hover = null; monEd.measA = null; monEd.measB = null;
+                monEd.win.querySelector('.monitor-ed-readout').textContent = 'Captura eliminada';
+                monEdRefreshList();
+                monEdDraw();
+                monEdNote(`captura ${id} eliminada`, true);
+            });
+        }
+
+        let historyWin = null;
+        let historyOnlyErrors = false;
+        let historyFilter = 'all';
+
+        function openHistoryWindow() {
+            if (historyWin && document.body.contains(historyWin)) {
+                historyWin.style.display = 'flex';
+                historyWin.style.zIndex = ++zCounter;
+                activeWindow = historyWin;
+                refreshHistory();
+                return;
+            }
+            windowCounter++; zCounter++;
+            const win = document.createElement('div');
+            win.className = 'motor-window editor-window history-window glass';
+            win.style.left = '150px';
+            win.style.top = '80px';
+            win.style.width = '960px';
+            win.style.height = '580px';
+            win.style.zIndex = zCounter;
+            win.style.display = 'flex';
+            win.innerHTML = `
+                <div class="motor-titlebar">
+                    <div class="traffic-lights">
+                        <button class="tl tl-close" aria-label="Cerrar"></button>
+                        <button class="tl tl-min" aria-label="Minimizar"></button>
+                        <button class="tl tl-max" aria-label="Maximizar"></button>
+                    </div>
+                    <div class="motor-tabs"><span class="motor-tab active">Historial</span></div>
+                    <div class="tl-spacer"></div>
+                </div>
+                <div class="history-body">
+                    <div class="history-toolbar">
+                        <button class="motor-action" data-h="refresh">Actualizar</button>
+                        <button class="motor-action active" data-h="f-all">Todas</button>
+                        <button class="motor-action" data-h="f-err">Solo errores</button>
+                        <button class="motor-action" data-h="f-tx">Codigo enviado</button>
+                        <button class="motor-action" data-h="f-rx">Respuestas</button>
+                        <button class="motor-action" data-h="f-sys">Eventos</button>
+                        <button class="motor-action" data-h="limits">Comprobar finales</button>
+                        <button class="motor-action" data-h="folder">Abrir carpeta</button>
+                        <span class="history-meta"></span>
+                    </div>
+                    <pre class="history-log"></pre>
+                </div>
+            `;
+            win.addEventListener('pointerdown', () => { win.style.zIndex = ++zCounter; activeWindow = win; });
+            win.querySelector('.tl-close').addEventListener('click', e => { e.stopPropagation(); historyWin = null; win.remove(); });
+            win.querySelector('.tl-min').addEventListener('click', e => {
+                e.stopPropagation();
+                if (win.classList.contains('maximized')) toggleMaximize(win);
+                toggleMinimize(win);
+            });
+            win.querySelector('.tl-max').addEventListener('click', e => {
+                e.stopPropagation();
+                if (win.classList.contains('minimized')) toggleMinimize(win);
+                toggleMaximize(win);
+            });
+            win.querySelector('.motor-titlebar').addEventListener('dblclick', e => {
+                if (!e.target.closest('.tl')) win.querySelector('.tl-max').click();
+            });
+            monEdDragable(win);
+            win.addEventListener('click', e => {
+                const b = e.target.closest('[data-h]');
+                if (!b) return;
+                const act = b.dataset.h;
+                if (act === 'refresh') refreshHistory();
+                else if (act.indexOf('f-') === 0) {
+                    historyFilter = act.slice(2);
+                    win.querySelectorAll('[data-h^="f-"]').forEach(x => x.classList.toggle('active', x === b));
+                    refreshHistory();
+                }
+                else if (act === 'limits') {
+                    if (window.cncApi) window.cncApi.sendCommand('LIMITS');
+                    setTimeout(refreshHistory, 1500);
+                }
+                else if (act === 'folder') { if (window.cncApi) window.cncApi.openHistoryFolder(); }
+            });
+            historyWin = win;
+            windowsLayer.appendChild(win);
+            activeWindow = win;
+            refreshHistory();
+        }
+
+        function refreshHistory() {
+            if (!historyWin) return;
+            const api = window.cncApi;
+            const meta = historyWin.querySelector('.history-meta');
+            const pre = historyWin.querySelector('.history-log');
+            if (!api) { meta.textContent = 'bridge no disponible'; return; }
+            api.readHistory(res => {
+                if (!historyWin) return;
+                if (!res || !res.ok) { meta.textContent = 'error al leer el historial'; return; }
+                let rows = res.lines || [];
+                const total = rows.length;
+                rows = rows.filter(r => historyFilter === 'all' || (historyFilter === 'err' ? /\[ERR\]|ALARM|ERROR/.test(r) : r.indexOf('[' + historyFilter.toUpperCase() + ']') >= 0));
+                const HIST_MAX = 400;
+                const shown = rows.slice(-HIST_MAX);
+                meta.textContent = (res.file ? res.file : 'sin archivo esta semana') + ' · ' + rows.length + ' de ' + total + ' lineas (ultimas ' + shown.length + ')';
+                const key = historyFilter + '|' + rows.length + '|' + (rows[rows.length - 1] || '');
+                if (historyWin._lastKey === key) return;
+                historyWin._lastKey = key;
+                rows = shown;
+                pre.innerHTML = rows.map(r => {
+                    const m = r.match(/\[(TX|RX|ERR|SYS)\]/);
+                    const kind = m ? m[1] : 'SYS';
+                    const cls = (kind === 'ERR' || /ALARM/.test(r)) ? 'h-ERR' : 'h-' + kind;
+                    return '<span class="' + cls + '">' + monEdEsc(r) + '</span>';
+                }).join('\n');
+                pre.scrollTop = pre.scrollHeight;
+            });
+        }
+
         function resizeCanvas(win) {
+            if (win.classList.contains('monitor-editor')) { monEdDraw(); return; }
             const canvas = win.querySelector('canvas');
             if (!canvas) return;
             const parent = canvas.parentElement;
@@ -2030,8 +3222,16 @@
                 dragging = true; sx = e.clientX; sy = e.clientY; left = win.offsetLeft; top = win.offsetTop;
                 win.classList.add('dragging'); try { bar.setPointerCapture(e.pointerId); } catch (_) {}
             });
+            let barRaf = 0, barEv = null;
             bar.addEventListener('pointermove', e => {
-                if (dragging) { win.style.left = (left + e.clientX - sx) + 'px'; win.style.top = (top + e.clientY - sy) + 'px'; }
+                if (!dragging) return;
+                barEv = e;
+                if (barRaf) return;
+                barRaf = requestAnimationFrame(() => {
+                    barRaf = 0;
+                    win.style.left = (left + barEv.clientX - sx) + 'px';
+                    win.style.top = (top + barEv.clientY - sy) + 'px';
+                });
             });
             const end = e => { dragging = false; win.classList.remove('dragging'); try { bar.releasePointerCapture(e.pointerId); } catch (_) {} };
             bar.addEventListener('pointerup', end); bar.addEventListener('pointercancel', end);
@@ -2074,6 +3274,12 @@
                         <span class="pulse-link">Esperando STM32</span>
                     </div>
                     <div class="motor-live-caption">Frecuencia STEP: Hz frente al tiempo · muestras cada 100 ms</div>
+                    <div class="motor-toolbar">
+                        <button class="motor-action" data-act="png">Capturar PNG</button>
+                        <button class="motor-action" data-act="csv">CSV</button>
+                        <button class="motor-action" data-act="adv">Avanzado</button>
+                    </div>
+                    <div class="motor-analysis"></div>
                     <div class="chart-container"><canvas></canvas></div>
                 </div>
             `;
@@ -2086,6 +3292,20 @@
                     win.dataset.motor = tab.dataset.motor;
                     const c = win.querySelector('canvas');
                     if (c) drawGraphOnCanvas(c, tab.dataset.motor);
+                });
+            });
+
+            win.querySelectorAll('.motor-action').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (btn.dataset.act === 'png') captureMotorChart(win);
+                    else if (btn.dataset.act === 'csv') exportMotorCsv([win.dataset.motor || 'X']);
+                    else if (btn.dataset.act === 'adv') {
+                        monitorConfig.advanced = !monitorConfig.advanced;
+                        const box = $('monitorAdvanced');
+                        if (box) box.checked = monitorConfig.advanced;
+                        refreshAllMotorWindows();
+                    }
                 });
             });
 
@@ -2138,10 +3358,16 @@
                 try { titlebar.setPointerCapture(e.pointerId); } catch(_) {}
             });
 
+            let dragRaf = 0, dragEv = null;
             titlebar.addEventListener('pointermove', (e) => {
                 if (!dragging) return;
-                win.style.left = (origLeft + e.clientX - dragStartX) + 'px';
-                win.style.top  = (origTop  + e.clientY - dragStartY) + 'px';
+                dragEv = e;
+                if (dragRaf) return;
+                dragRaf = requestAnimationFrame(() => {
+                    dragRaf = 0;
+                    win.style.left = (origLeft + dragEv.clientX - dragStartX) + 'px';
+                    win.style.top  = (origTop  + dragEv.clientY - dragStartY) + 'px';
+                });
             });
 
             const endDrag = (e) => {

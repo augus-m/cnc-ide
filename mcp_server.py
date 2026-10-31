@@ -54,9 +54,14 @@ def get_cnc_status() -> dict[str, Any]:
     return _read_state()
 
 
+def _is_polling_noise(row: str) -> bool:
+    return ("[RX] ST " in row) or ("[RX] POS" in row) or ("[TX] M114" in row) or ("[TX] LIMITS" in row)
+
+
 @mcp.tool()
-def read_cnc_terminal(lines: int = 100) -> str:
-    """Lee las últimas líneas de la terminal; no modifica ni envía comandos."""
+def read_cnc_terminal(lines: int = 100, important_only: bool = True) -> str:
+    """Lee las últimas líneas de la terminal; no modifica ni envía comandos.
+    Con important_only (por defecto) omite el sondeo periódico (ST, POS, M114, LIMITS)."""
     count = max(1, min(1000, int(lines)))
     try:
         with TERMINAL_FILE.open("rb") as stream:
@@ -64,12 +69,84 @@ def read_cnc_terminal(lines: int = 100) -> str:
             end = stream.tell()
             stream.seek(max(0, end - 262144))
             content = stream.read().decode("utf-8", errors="replace")
-        return "\n".join(content.splitlines()[-count:]) or "La terminal todavía no tiene líneas."
+        rows = content.splitlines()
+        if important_only:
+            rows = [r for r in rows if not _is_polling_noise(r)]
+        return "\n".join(rows[-count:]) or "La terminal todavía no tiene líneas."
     except FileNotFoundError:
         return "No existe el registro de terminal; abre gui_v/main.py y conecta la CNC."
     except OSError as exc:
         return f"No se pudo leer la terminal: {exc}"
 
+
+HISTORY_DIR = APP_DIR / 'data' / 'historial'
+HISTORY_KINDS = ('all', 'err', 'tx', 'rx', 'sys')
+
+
+@mcp.tool()
+def read_cnc_history(lines: int = 200, kind: str = 'all') -> str:
+    """Lee el historial semanal de la GUI; no modifica ni envía comandos.
+    kind: all (todo), err (errores y alarmas), tx (codigo enviado), rx (respuestas), sys (eventos)."""
+    count = max(1, min(2000, int(lines)))
+    kind = str(kind).strip().lower()
+    if kind not in HISTORY_KINDS:
+        return 'kind no valido: usa ' + ', '.join(HISTORY_KINDS)
+    try:
+        files = sorted(HISTORY_DIR.glob('semana_*.log')) if HISTORY_DIR.is_dir() else []
+        if not files:
+            return 'No hay historial esta semana todavia.'
+        latest = files[-1]
+        rows = latest.read_text(encoding='utf-8', errors='replace').splitlines()
+    except OSError as exc:
+        return 'No se pudo leer el historial: ' + str(exc)
+    if kind == 'err':
+        rows = [r for r in rows if '[ERR]' in r or 'ALARM' in r or 'ERROR' in r]
+    elif kind != 'all':
+        tag = '[' + kind.upper() + ']'
+        rows = [r for r in rows if tag in r]
+    header = latest.name + ' · ' + str(len(rows)) + ' lineas (' + kind + ')'
+    body = '\n'.join(rows[-count:]) or 'Sin lineas para este filtro.'
+    return header + '\n' + body
+
+
+TRABAJOS_DIR = APP_DIR / "data" / "trabajos"
+
+
+@mcp.tool()
+def read_cnc_job(job: str = '', errors_lines: int = 40) -> str:
+    """Lee el resumen de un trabajo y sus ultimos errores. Solo lectura, pocos tokens.
+    job: nombre de la carpeta (AAAA-MM-DD_HHMMSS). Vacio = el trabajo mas reciente.
+    errors_lines: cuantas lineas de errores.log mostrar (max 200)."""
+    try:
+        carpetas = sorted(p for p in TRABAJOS_DIR.iterdir() if p.is_dir()) if TRABAJOS_DIR.is_dir() else []
+    except OSError as exc:
+        return 'No se pudo leer data/trabajos: ' + str(exc)
+    if not carpetas:
+        return 'Todavia no hay trabajos registrados.'
+    nombre = str(job).strip()
+    if nombre:
+        match = [p for p in carpetas if p.name == nombre]
+        if not match:
+            return 'No existe el trabajo ' + nombre + '. Recientes: ' + ', '.join(p.name for p in carpetas[-5:])
+        carpeta = match[0]
+    else:
+        carpeta = carpetas[-1]
+    n = max(1, min(200, int(errors_lines)))
+    partes = []
+    try:
+        resumen = carpeta / 'resumen.md'
+        partes.append(resumen.read_text(encoding='utf-8', errors='replace').strip()
+                      if resumen.is_file() else 'Falta resumen.md en ' + carpeta.name)
+        errores = carpeta / 'errores.log'
+        if errores.is_file():
+            filas = errores.read_text(encoding='utf-8', errors='replace').splitlines()
+            partes.append('\nUltimos errores (' + str(min(n, len(filas))) + ' de ' + str(len(filas)) + '):\n'
+                          + ('\n'.join(filas[-n:]) or '(sin errores)'))
+        else:
+            partes.append('\nSin errores registrados.')
+    except OSError as exc:
+        return 'No se pudo leer el trabajo ' + carpeta.name + ': ' + str(exc)
+    return 'Trabajo: ' + carpeta.name + '\n' + '\n'.join(partes)
 
 def _writes_enabled() -> bool:
     try:

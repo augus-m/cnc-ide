@@ -2,9 +2,12 @@
 """CNC Proyect: plantilla Liquid Glass conectada al backend PySide6."""
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -416,6 +419,202 @@ class CncWebBridge(QObject):
     @Slot()
     def copyConsole(self) -> None:
         self.backend._copy_console()
+
+    # ---- Monitor: biblioteca de capturas, exportación y aplicaciones ----
+    MONITOR_DIR = APP_DIR / "data" / "monitor" / "captures"
+    DESKTOP_DIRS = [
+        Path("/usr/share/applications"),
+        Path.home() / ".local/share/applications",
+        Path("/var/lib/flatpak/exports/share/applications"),
+        Path.home() / ".local/share/flatpak/exports/share/applications",
+        Path("/var/lib/snapd/desktop/applications"),
+    ]
+
+    @staticmethod
+    def _safe_stem(name: str) -> str:
+        stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(name)).strip("._")
+        return stem[:120] or "captura"
+
+    @Slot(str, str, result="QVariantMap")
+    def saveMonitorCapture(self, name: str, payload_json: str) -> dict[str, Any]:
+        try:
+            payload = json.loads(payload_json)
+            png_b64 = payload.pop("png", "")
+            self.MONITOR_DIR.mkdir(parents=True, exist_ok=True)
+            base = f"{self._safe_stem(name)}_{time.strftime('%Y%m%d-%H%M%S')}"
+            stem, n = base, 2
+            while (self.MONITOR_DIR / f"{stem}.json").exists():
+                stem = f"{base}-{n}"
+                n += 1
+            (self.MONITOR_DIR / f"{stem}.png").write_bytes(base64.b64decode(png_b64))
+            payload["id"] = stem
+            (self.MONITOR_DIR / f"{stem}.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            self._log(f"Monitor: captura guardada {stem}")
+            return {"ok": True, "id": stem}
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            self._log(f"Monitor: no se pudo guardar la captura: {exc}", level="error")
+            return {"ok": False, "error": str(exc)}
+
+    @Slot(result="QVariantList")
+    def listMonitorCaptures(self) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        if self.MONITOR_DIR.is_dir():
+            for meta_file in sorted(self.MONITOR_DIR.glob("*.json"), reverse=True)[:300]:
+                try:
+                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                items.append({
+                    "id": meta.get("id", meta_file.stem),
+                    "axis": meta.get("axis", ""),
+                    "created": meta.get("created", ""),
+                    "samples": len(meta.get("samples", [])),
+                })
+        return items
+
+    @Slot(str, result="QVariantMap")
+    def readMonitorCapture(self, capture_id: str) -> dict[str, Any]:
+        stem = self._safe_stem(capture_id)
+        meta_path = self.MONITOR_DIR / f"{stem}.json"
+        png_path = self.MONITOR_DIR / f"{stem}.png"
+        if not meta_path.exists() or not png_path.exists():
+            return {"ok": False, "error": "Captura no encontrada"}
+        try:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
+            png_bytes = png_path.read_bytes()
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        data.update({
+            "ok": True,
+            "id": stem,
+            "pngPath": str(png_path),
+            "png": base64.b64encode(png_bytes).decode("ascii"),
+        })
+        return data
+
+    @Slot(str, result=bool)
+    def deleteMonitorCapture(self, capture_id: str) -> bool:
+        stem = self._safe_stem(capture_id)
+        removed = False
+        for suffix in (".json", ".png"):
+            path = self.MONITOR_DIR / f"{stem}{suffix}"
+            if path.exists():
+                path.unlink()
+                removed = True
+        if removed:
+            self._log(f"Monitor: captura eliminada {stem}")
+        return removed
+
+    @Slot(str, str, bool, str, result="QVariantMap")
+    def saveWithDialog(self, default_name: str, content: str, is_base64: bool, filter_label: str) -> dict[str, Any]:
+        suggested = str(Path.home() / Path(default_name).name)
+        path, _ = QFileDialog.getSaveFileName(
+            self.window, "Guardar exportación", suggested, filter_label or "Todos los archivos (*)"
+        )
+        if not path:
+            return {"ok": False, "cancelled": True}
+        try:
+            data = base64.b64decode(content) if is_base64 else content.encode("utf-8")
+            Path(path).write_bytes(data)
+        except (OSError, ValueError) as exc:
+            self._log(f"Exportación fallida: {exc}", level="error")
+            return {"ok": False, "error": str(exc)}
+        self._log(f"Exportado: {path}")
+        return {"ok": True, "path": path}
+
+    @staticmethod
+    def _parse_desktop(path: Path) -> dict[str, Any] | None:
+        fields: dict[str, str] = {}
+        in_entry = False
+        try:
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            return None
+        for raw in lines:
+            line = raw.strip()
+            if line.startswith("["):
+                in_entry = line == "[Desktop Entry]"
+                continue
+            if not in_entry or "=" not in line or line.startswith("#"):
+                continue
+            key, value = line.split("=", 1)
+            if "[" in key:
+                continue
+            fields.setdefault(key.strip(), value.strip())
+        if fields.get("Type") != "Application" or fields.get("NoDisplay", "").lower() == "true" or fields.get("Hidden", "").lower() == "true":
+            return None
+        name = fields.get("Name")
+        if not name:
+            return None
+        mimes = [m for m in fields.get("MimeType", "").split(";") if m]
+        return {"name": name, "id": path.stem, "path": str(path), "mimes": mimes}
+
+    @Slot(str, result="QVariantList")
+    def listDesktopApps(self, mode: str) -> list[dict[str, Any]]:
+        found: dict[str, dict[str, Any]] = {}
+        for folder in self.DESKTOP_DIRS:
+            if not folder.is_dir():
+                continue
+            for desktop in folder.glob("*.desktop"):
+                info = self._parse_desktop(desktop)
+                if info is None:
+                    continue
+                if mode == "image" and not any(m.startswith("image/") for m in info["mimes"]):
+                    continue
+                found.setdefault(f"{info['name'].lower()}|{info['id']}", info)
+        return sorted(found.values(), key=lambda a: a["name"].lower())[:500]
+
+    @Slot(str, str, result="QVariantMap")
+    def openWithApp(self, desktop_path: str, file_path: str) -> dict[str, Any]:
+        target = Path(file_path)
+        if not target.is_file():
+            return {"ok": False, "error": "El archivo no existe"}
+        desktop = Path(desktop_path)
+        if desktop.is_file() and shutil.which("gio"):
+            cmd = ["gio", "launch", str(desktop), str(target)]
+        elif shutil.which("xdg-open"):
+            cmd = ["xdg-open", str(target)]
+        else:
+            return {"ok": False, "error": "No se encontró gio ni xdg-open"}
+        try:
+            subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        self._log(f"Abriendo {target.name} con {desktop.stem or 'la aplicación predeterminada'}")
+        return {"ok": True}
+
+    @Slot(str, result="QVariantMap")
+    def revealInFileManager(self, file_path: str) -> dict[str, Any]:
+        self.MONITOR_DIR.mkdir(parents=True, exist_ok=True)
+        target = Path(file_path) if file_path else self.MONITOR_DIR
+        folder = target if target.is_dir() else target.parent
+        if not folder.is_dir():
+            return {"ok": False, "error": "La carpeta no existe"}
+        if not shutil.which("xdg-open"):
+            return {"ok": False, "error": "No se encontró xdg-open"}
+        subprocess.Popen(["xdg-open", str(folder)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {"ok": True, "path": str(folder)}
+
+    @Slot()
+    def openHistoryFolder(self) -> None:
+        folder = APP_DIR / "data" / "historial"
+        folder.mkdir(parents=True, exist_ok=True)
+        if shutil.which("xdg-open"):
+            subprocess.Popen(["xdg-open", str(folder)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self._log(f"Historial: {folder}")
+
+    @Slot(result='QVariantMap')
+    def readHistory(self) -> dict[str, Any]:
+        folder = APP_DIR / 'data' / 'historial'
+        files = sorted(folder.glob('semana_*.log')) if folder.is_dir() else []
+        if not files:
+            return {'ok': True, 'file': '', 'lines': []}
+        latest = files[-1]
+        try:
+            rows = latest.read_text(encoding='utf-8', errors='replace').splitlines()
+        except OSError as exc:
+            return {'ok': False, 'error': str(exc)}
+        return {'ok': True, 'file': latest.name, 'lines': rows[-2000:]}
 
     def buildState(self) -> dict[str, Any]:
         w = self.backend

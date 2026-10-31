@@ -402,6 +402,7 @@
 
   new QWebChannel(qt.webChannelTransport, channel => {
     api = channel.objects.cnc;
+    window.cncApi = api;
     bindTemplateActions();
     api.stateChanged.connect(renderState);
     api.pulseStatsChanged.connect(payload => {

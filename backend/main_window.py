@@ -43,6 +43,147 @@ JOB_WINDOW = 8
 
 CONSOLE_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "gui_consola.log"
 
+HISTORY_DIR = Path(__file__).resolve().parents[1] / "data" / "historial"
+
+TRABAJOS_DIR = Path(__file__).resolve().parents[1] / "data" / "trabajos"
+
+def _es_error(text):
+    t = text.upper()
+    return any(w in t for w in ("ALARM", "ERROR", "ABORTADO", "NO CONFIABLE", "E-STOP"))
+
+class _JobRecorder:
+    """Una carpeta por trabajo con archivos separados y legibles:
+    resumen.md, gcode.nc, envios.log, respuestas.log, eventos.log, errores.log.
+    Se cierra (deja de escribir) solo cuando empieza otro trabajo."""
+
+    def __init__(self):
+        self.dir = None
+        self.t0 = None
+        self.t1 = None
+        self.estado = "sin trabajo"
+        self.n_total = 0
+        self.sent = 0
+        self.rx = 0
+        self.errors = 0
+        self.first_error = ""
+        self.last_error = ""
+        self.last_tx = ""
+
+    def start(self, lines):
+        try:
+            ts = datetime.now()
+            d = TRABAJOS_DIR / ts.strftime("%Y-%m-%d_%H%M%S")
+            d.mkdir(parents=True, exist_ok=True)
+            self.dir = d
+            self.t0 = ts
+            self.t1 = None
+            self.estado = "en curso"
+            self.n_total = len(lines)
+            self.sent = self.rx = self.errors = 0
+            self.first_error = self.last_error = self.last_tx = ""
+            with open(d / "gcode.nc", "w", encoding="utf-8") as f:
+                for i, l in enumerate(lines, 1):
+                    f.write(f"{i:05d}  {l.rstrip()}\n")
+            self._resumen()
+        except Exception:
+            self.dir = None
+
+    def _append(self, name, text):
+        if self.dir is None:
+            return
+        try:
+            with open(self.dir / name, "a", encoding="utf-8") as f:
+                f.write(text + "\n")
+        except Exception:
+            pass
+
+    def write(self, kind, text):
+        if self.dir is None:
+            return
+        ts = datetime.now().strftime("%H:%M:%S")
+        if kind == "TX":
+            self.sent += 1
+            self.last_tx = text
+            self._append("envios.log", f"{ts}  {text}")
+        elif kind == "RX":
+            self.rx += 1
+            self._append("respuestas.log", f"{ts}  {text}")
+        else:
+            self._append("eventos.log", f"{ts}  [{kind}] {text}")
+        if kind == "ERR" or _es_error(text):
+            self.errors += 1
+            msg = f"{ts}  [{kind}] {text}"
+            if not self.first_error:
+                self.first_error = msg
+            self.last_error = msg
+            self._append("errores.log", msg)
+
+    def finish(self, estado):
+        if self.dir is None:
+            return
+        self.estado = estado
+        self.t1 = datetime.now()
+        self._resumen()
+
+    def _resumen(self):
+        try:
+            dur = ((self.t1 or datetime.now()) - self.t0).total_seconds()
+            txt = (
+                f"# Trabajo {self.t0.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"- Estado: {self.estado}\n"
+                f"- Inicio: {self.t0.strftime('%H:%M:%S')}\n"
+                f"- Fin: {self.t1.strftime('%H:%M:%S') if self.t1 else 'en curso'}\n"
+                f"- Duracion: {dur:.0f} s\n"
+                f"- Lineas del G-code: {self.n_total}\n"
+                f"- Lineas enviadas: {self.sent}\n"
+                f"- Respuestas recibidas: {self.rx}\n"
+                f"- Errores/alarmas: {self.errors}\n"
+                f"- Ultima linea enviada: {self.last_tx or '-'}\n"
+                f"- Primer error: {self.first_error or '-'}\n"
+                f"- Ultimo error: {self.last_error or '-'}\n\n"
+                "Archivos:\n"
+                "- gcode.nc: programa completo, numerado\n"
+                "- envios.log: lo que la GUI envio a la placa\n"
+                "- respuestas.log: lo que responde la placa (ST, BUSY, OK, DONE, ALARM)\n"
+                "- eventos.log: mensajes de la GUI\n"
+                "- errores.log: solo errores y alarmas\n"
+            )
+            with open(self.dir / "resumen.md", "w", encoding="utf-8") as f:
+                f.write(txt)
+        except Exception:
+            pass
+
+JOB_RECORDER = _JobRecorder()
+
+HISTORY_WORDS = ("ALARM", "ERROR", "HOME", "MODO", "E-STOP", "Job", "Trabajo", "Archivo", "Abr", "Conect", "Desconect", "Fabric", "Simul")
+
+def _history_wanted(kind, text):
+    if kind == "ERR":
+        return True
+    if kind == "TX":
+        code = text.strip().upper()
+        if code.startswith(("M114", "LIMITS")):
+            return False
+        return code.startswith(("G", "M", "$"))
+    if kind == "RX":
+        return any(w in text for w in ("ALARM", "ERROR", "HOME", "MODO", "E-STOP"))
+    return any(w in text for w in HISTORY_WORDS)
+
+def _append_history(kind, text):
+    try:
+        if not _history_wanted(kind, text):
+            return
+        tag = datetime.now().strftime("%G-W%V")
+        HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+        for old in HISTORY_DIR.glob("semana_*.log"):
+            if old.name != f"semana_{tag}.log":
+                old.unlink(missing_ok=True)
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(HISTORY_DIR / f"semana_{tag}.log", "a", encoding="utf-8") as f:
+            f.write(f"{ts} [{kind}] {text}\n")
+    except Exception:
+        pass
+
 def _append_console_log(kind, text):
     try:
         CONSOLE_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -51,6 +192,8 @@ def _append_console_log(kind, text):
             f.write(f"{ts} [{kind}] {text}\n")
     except Exception:
         pass
+    _append_history(kind, text)
+    JOB_RECORDER.write(kind, text)
 
 from PySide6.QtCore import Qt, QThread, QTimer, QSettings, Signal, Slot, QPointF, QObject
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QPixmap, QFontDatabase, QIcon
@@ -2442,6 +2585,7 @@ class MainWindow(QMainWindow):
         self.job_running = True
         # Aplicar el override antes del G-code; su OK ocupa el primer lugar
         # de la secuencia FIFO, pero no confirma una línea del programa.
+        JOB_RECORDER.start(self.job_lines)
         self._send_cmd(f"M220 S{self.feed_override}")
         self._hold_sleep_inhibit()
         self.job_paused = False
@@ -2670,6 +2814,7 @@ class MainWindow(QMainWindow):
         self.time_timer.stop()
         self.editor.set_job_line(-1)
         self._log_system("Trabajo detenido")
+        JOB_RECORDER.finish("detenido por usuario")
         if self.connected:
             self._send_cmd("M112")
 
@@ -2690,6 +2835,7 @@ class MainWindow(QMainWindow):
         self.time_timer.stop()
         self.editor.set_job_line(-1)
         self._log_system(f"Trabajo completado ({self.job_total} lineas)")
+        JOB_RECORDER.finish("completado")
 
     def _update_job_clock(self):
         if not self.job_running or self._job_start_time == 0:
@@ -3598,6 +3744,7 @@ class MainWindow(QMainWindow):
             f"Job abortado en linea {self.job_current}/{self.job_total}: {reason}",
             level="error",
         )
+        JOB_RECORDER.finish("abortado: " + reason)
 
     def _parse_incoming(self, line):
         # re.search en vez de re.match: DONE X:... Y:... tambien encaja
