@@ -13,7 +13,7 @@ def _clean(raw):
     return re.sub(r"\([^)]*\)", "", str(raw).split(";")[0]).upper().strip()
 
 
-def parse_program(lines, arc_tolerance=0.25):
+def parse_program(lines, arc_tolerance=0.02):
     x = y = z = 0.0
     unit = 1.0
     absolute = True
@@ -84,7 +84,7 @@ def parse_program(lines, arc_tolerance=0.25):
                     centers = [(mx+nx*h,my+ny*h),(mx-nx*h,my-ny*h)]
                     def sweep_for(center):
                         aa=math.atan2(y-center[1],x-center[0]); ab=math.atan2(end[1]-center[1],end[0]-center[0])
-                        return ((ab-aa)%(2*math.pi)) if motion == 2 else -((aa-ab)%(2*math.pi))
+                        return ((ab-aa)%(2*math.pi)) if motion == 3 else -((aa-ab)%(2*math.pi))
                     candidates=[(c,sweep_for(c)) for c in centers]
                     want_major=vals["R"]<0
                     chosen=next((cs for cs in candidates if (abs(cs[1]) > math.pi) == want_major), candidates[0])
@@ -100,11 +100,24 @@ def parse_program(lines, arc_tolerance=0.25):
                 warnings.append({"line": idx+1, "code": "arc_invalid", "text": "Arco I/J inválido; se muestra como recta"})
             else:
                 a0, a1 = math.atan2(y-cy, x-cx), math.atan2(end[1]-cy, end[0]-cx)
-                sweep = ((a1-a0) % (2*math.pi)) if motion == 2 else -((a0-a1) % (2*math.pi))
-                if abs(sweep) < 1e-9: sweep = 2*math.pi if motion == 2 else -2*math.pi
-                step = max(0.03, 2*math.acos(max(-1.0, min(1.0, 1-arc_tolerance/r0))))
-                n = min(2000, max(2, math.ceil(abs(sweep)/step)))
-                points = [(cx+r0*math.cos(a0+sweep*t/n), cy+r0*math.sin(a0+sweep*t/n), z+(end[2]-z)*t/n) for t in range(1,n+1)]
+                sweep = ((a1-a0) % (2*math.pi)) if motion == 3 else -((a0-a1) % (2*math.pi))
+                if abs(sweep) < 1e-9: sweep = 2*math.pi if motion == 3 else -2*math.pi
+                # step angular segun arc_tolerance (antes estaba fijo en 0.1 mm)
+                chord_error = max(0.005, float(arc_tolerance))
+                step = max(0.01, 2*math.asin(chord_error / (2*max(r0, 0.1))))
+                n = min(4000, max(2, math.ceil(abs(sweep)/step)))
+                # muestreo con easing coseno para joins suaves
+                pts = [
+                    (
+                        cx + r0*math.cos(a0 + sweep*(1 - math.cos(math.pi*t/n))/2),
+                        cy + r0*math.sin(a0 + sweep*(1 - math.cos(math.pi*t/n))/2),
+                        z + (end[2]-z)*t/n
+                    )
+                    for t in range(1, n+1)
+                ]
+                # forzamos el punto final exactamente sobre el objetivo
+                pts[-1] = (end[0], end[1], end[2])
+                points = pts
         prev = start
         kind = "rapid" if motion == 0 else ("arc" if motion in (2,3) else "cut")
         for p in points:

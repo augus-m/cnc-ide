@@ -309,6 +309,12 @@ def make_logo_pixmap(size, dark=False):
 # ============================================================
 
 
+def _board_name(filename):
+    """Nombre de la placa: el prefijo antes del ultimo '-' (555-F_Cu.gbr -> 555)."""
+    base = os.path.splitext(os.path.basename(filename))[0]
+    return base.rsplit('-', 1)[0] if '-' in base else base
+
+
 def _detect_gerber_layer(filename):
     """Detecta que capa es segun el nombre del archivo."""
     fn = filename.lower()
@@ -1868,7 +1874,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QCheckBox
         self.chk_show_rapids = QCheckBox("Ver G0 (rapidos)")
         self.chk_show_rapids.setStyleSheet(f"color: {C_TEXT_1}; font-size: 11px;")
-        self.chk_show_rapids.setChecked(False)
+        self.chk_show_rapids.setChecked(True)
         self.chk_show_rapids.setToolTip(
             "Movimientos rapidos entre cortes. Se ven como lineas largas\n"
             "cruzando la placa. Normalmente desmarcado para ver solo cortes."
@@ -1964,7 +1970,7 @@ class MainWindow(QMainWindow):
         jog_layout.addWidget(lbl_speed)
 
         self.speed_combo = QComboBox()
-        for val, label in [(200, "Lento"), (300, "Normal"), (2000, "Rapido"), (5000, "Turbo")]:
+        for val, label in [(200, "Lento"), (450, "Normal"), (550, "Rapido"), (5000, "Turbo")]:
             self.speed_combo.addItem(label, val)
         self.speed_combo.setCurrentIndex(1)
         self.speed_combo.setFixedWidth(90)
@@ -2118,6 +2124,19 @@ class MainWindow(QMainWindow):
         self.lbl_eta = card_time.add_coord_row("Restante", "-")
         self.lbl_eta.setObjectName("CoordValueDim")
         layout.addWidget(card_time)
+
+        # Carga del H723 (telemetria DWT del firmware: lineas PERF1/PERF2)
+        card_perf = Card("Carga H723")
+        self.lbl_perf_load = card_perf.add_coord_row("CPU lazo", "-")
+        self.lbl_perf_isr = card_perf.add_coord_row("ISR TIM6", "-")
+        self.lbl_perf_loop = card_perf.add_coord_row("Lazo max", "-")
+        self.lbl_perf_sect = card_perf.add_coord_row("Mayor seccion", "-")
+        self.lbl_perf_enq = card_perf.add_coord_row("Planner enqueue", "-")
+        self.lbl_perf_mov = card_perf.add_coord_row("MoveXY", "-")
+        self.lbl_perf_prod = card_perf.add_coord_row("Productor max", "-")
+        self.lbl_perf_ur = card_perf.add_coord_row("Underruns", "-")
+        self.lbl_perf_free = card_perf.add_coord_row("Cola libre", "-")
+        layout.addWidget(card_perf)
 
         layout.addStretch()
         scroll.setWidget(content)
@@ -2435,7 +2454,7 @@ class MainWindow(QMainWindow):
 
             self.chk_show_rapids.blockSignals(True)
             self.chk_show_cuts.blockSignals(True)
-            self.chk_show_rapids.setChecked(False)
+            self.chk_show_rapids.setChecked(True)
             self.chk_show_cuts.setChecked(True)
             self.chk_show_rapids.blockSignals(False)
             self.chk_show_cuts.blockSignals(False)
@@ -3191,71 +3210,381 @@ class MainWindow(QMainWindow):
             return
 
         if params is None:
-            # Dialogo de parametros
-            from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox, QVBoxLayout, QLabel
-            dlg = QDialog(self)
-            dlg.setWindowTitle("Parametros de fresado de PCB")
-            dlg.setMinimumWidth(380)
-            d_layout = QVBoxLayout(dlg)
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                pre_text = f.read()
 
-            info = QLabel(
-                "Ajusta los parametros segun tu fresa.\n"
-                "Tipico: V-bit 0.2 mm con 0.15 mm de clearance."
+            # Dialogo de parametros: plano 2D a la izquierda, ajustes en tarjetas a la derecha
+            from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QDoubleSpinBox, QHBoxLayout,
+                                           QVBoxLayout, QLabel, QFormLayout, QComboBox, QCheckBox,
+                                           QGroupBox)
+            from PySide6.QtCore import QSettings
+            from dialogs import GlassDialog
+            from pcb_preview import PcbPreview
+
+            cfg = QSettings("CNC Project", "gui_v_pcb")
+            dlg = GlassDialog("Parametros de fresado de PCB", self)
+            dlg.setMinimumWidth(1000)
+            dlg.resize(1040, 660)
+            dlg.setStyleSheet(
+                "QLabel { color: #ffffff; background: transparent; font-size: 12px; }"
+                "QGroupBox { color: #ffffff; font-weight: 600; border: 1px solid rgba(255,255,255,0.12);"
+                " border-radius: 12px; margin-top: 14px; padding: 14px 10px 10px 10px;"
+                " background: rgba(255,255,255,0.03); }"
+                "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; color: #8e8e93; }"
+                "QDoubleSpinBox, QComboBox { background-color: rgba(255,255,255,0.08);"
+                " border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 4px 8px;"
+                " color: #ffffff; min-height: 22px; }"
+                "QDoubleSpinBox:focus, QComboBox:focus { border: 1px solid #0A84FF; }"
+                "QComboBox QAbstractItemView { background: #1c1c1e; color: #ffffff; selection-background-color: #0A84FF; }"
+                "QCheckBox { color: #ffffff; background: transparent; }"
+                "QPushButton { border-radius: 8px; padding: 7px 20px; font-size: 12px; border: none; }"
+                "QPushButton#DlgPrimary { background-color: #0A84FF; color: #ffffff; font-weight: 600; }"
+                "QPushButton#DlgPrimary:hover { background-color: #2b94ff; }"
+                "QPushButton#DlgSecondary { background-color: rgba(255,255,255,0.10); color: #ffffff; }"
+                "QPushButton#DlgSecondary:hover { background-color: rgba(255,255,255,0.16); }"
             )
-            info.setStyleSheet(f"color: {C_TEXT_2}; font-size: 11px;")
-            d_layout.addWidget(info)
+            root = dlg.content_layout
+            root.setSpacing(12)
 
-            form = QFormLayout()
+            body = QHBoxLayout()
+            body.setSpacing(16)
+            preview = PcbPreview(pre_text)
+            body.addWidget(preview, 3)
 
+            right = QVBoxLayout()
+            right.setSpacing(10)
+
+            def card(title):
+                g = QGroupBox(title)
+                f = QFormLayout(g)
+                f.setSpacing(8)
+                right.addWidget(g)
+                return f
+
+            # Tarjeta 1: herramienta
+            f_tool = card("Herramienta")
+            cb_preset = QComboBox()
+            cb_preset.addItems(["Personalizada", "V-bit 0.10 mm", "V-bit 0.20 mm",
+                                "V-bit 0.30 mm", "V-bit 0.50 mm", "Fresa plana 0.80 mm"])
+            presets = [None, 0.10, 0.20, 0.30, 0.50, 0.80]
             sp_tool = QDoubleSpinBox()
             sp_tool.setRange(0.05, 5.0)
             sp_tool.setSingleStep(0.05)
             sp_tool.setDecimals(2)
-            sp_tool.setValue(0.20)
+            sp_tool.setValue(float(cfg.value("tool", 0.20)))
             sp_tool.setSuffix(" mm")
-            form.addRow("Diametro fresa (V-bit):", sp_tool)
-
             sp_clear = QDoubleSpinBox()
             sp_clear.setRange(0.0, 2.0)
             sp_clear.setSingleStep(0.05)
             sp_clear.setDecimals(2)
-            sp_clear.setValue(0.15)
+            sp_clear.setValue(float(cfg.value("clearance", 0.15)))
             sp_clear.setSuffix(" mm")
-            form.addRow("Clearance (margen extra):", sp_clear)
+            sp_tol = QDoubleSpinBox()
+            sp_tol.setRange(0.0, 0.2)
+            sp_tol.setSingleStep(0.005)
+            sp_tol.setDecimals(3)
+            sp_tol.setValue(float(cfg.value("simplify_tol", 0.02)))
+            sp_tol.setSuffix(" mm")
+            sp_tol.setToolTip("Error maximo al simplificar curvas. 0 desactiva la simplificacion.")
+            f_tool.addRow("Preset:", cb_preset)
+            f_tool.addRow("Diametro (V-bit):", sp_tool)
+            f_tool.addRow("Clearance:", sp_clear)
+            f_tool.addRow("Simplificacion:", sp_tol)
+            sp_min = QDoubleSpinBox()
+            sp_min.setRange(0.0, 1.0)
+            sp_min.setSingleStep(0.01)
+            sp_min.setDecimals(3)
+            sp_min.setValue(float(cfg.value("min_seg", 0.05)))
+            sp_min.setSuffix(" mm")
+            sp_min.setToolTip("Descarta puntos separados menos de este valor (quita micro-segmentos).")
+            cb_arc = QCheckBox("Usar arcos G2/G3 en curvas")
+            cb_arc.setChecked(str(cfg.value("arc_fit", "true")).lower() == "true")
+            f_tool.addRow("Segmento minimo:", sp_min)
+            f_tool.addRow(cb_arc)
+            cb_modo = QComboBox()
+            cb_modo.addItems(['Dibujo: contorno', 'Dibujo: relleno', 'Dibujo: contorno + relleno', 'Fresado: aislamiento', 'Fresado: aislamiento + Edge.Cuts'])
+            _modo_idx = {k:i for i,k in enumerate(['contorno', 'relleno', 'ambos', 'aislamiento', 'aislamiento_edge'])}
+            cb_modo.setCurrentIndex(_modo_idx.get(str(cfg.value("modo", "contorno")), 0))
+            sp_pitch = QDoubleSpinBox()
+            sp_pitch.setRange(0.02, 2.0)
+            sp_pitch.setSingleStep(0.01)
+            sp_pitch.setDecimals(2)
+            sp_pitch.setValue(float(cfg.value("hatch_pitch", 0.15)))
+            sp_pitch.setSuffix(" mm")
+            sp_pitch.setToolTip("Separacion entre lineas de relleno. Tipico: igual o menor al diametro de la fresa.")
+            lbl_edge_path = QLabel("")
+            lbl_edge_path.setWordWrap(True)
+            lbl_edge_path.setStyleSheet("color:#8e8e93;font-size:10px;")
+            btn_edge = QPushButton("Seleccionar Edge.Cuts…")
+            btn_edge.setObjectName("DlgSecondary")
+            _edge_data = {"path": None, "text": None}
+            def _pick_edge():
+                from PySide6.QtWidgets import QFileDialog as _QFD
+                p, _ = _QFD.getOpenFileName(dlg, "Seleccionar Edge.Cuts Gerber",
+                                            str(Path(path).parent), "Gerber (*.gbr *.ger *.GBR)")
+                if p:
+                    _edge_data["path"] = p
+                    with open(p, encoding="utf-8", errors="replace") as _f:
+                        _edge_data["text"] = _f.read()
+                    lbl_edge_path.setText(Path(p).name)
+            btn_edge.clicked.connect(_pick_edge)
+            def _update_edge_vis():
+                on = cb_modo.currentIndex() >= 3
+                btn_edge.setVisible(on)
+                lbl_edge_path.setVisible(on)
+            cb_modo.currentIndexChanged.connect(lambda _: _update_edge_vis())
+            f_tool.addRow("Modo:", cb_modo)
+            f_tool.addRow("", btn_edge)
+            f_tool.addRow("", lbl_edge_path)
+            f_tool.addRow("Paso relleno:", sp_pitch)
+            _update_edge_vis()
+            cb_preset.currentIndexChanged.connect(
+                lambda i: sp_tool.setValue(presets[i]) if presets[i] else None)
 
+            # Tarjeta 2: posicion y transformacion
+            f_pos = card("Posicion y transformacion")
+            rot_opts = [0, 90, 180, 270]
+            sp_ox = QDoubleSpinBox()
+            sp_ox.setRange(-500.0, 500.0)
+            sp_ox.setSingleStep(1.0)
+            sp_ox.setDecimals(2)
+            sp_ox.setValue(float(cfg.value("origin_x", 0.0)))
+            sp_ox.setSuffix(" mm")
+            sp_oy = QDoubleSpinBox()
+            sp_oy.setRange(-500.0, 500.0)
+            sp_oy.setSingleStep(1.0)
+            sp_oy.setDecimals(2)
+            sp_oy.setValue(float(cfg.value("origin_y", 0.0)))
+            sp_oy.setSuffix(" mm")
+            cb_rot = QComboBox()
+            cb_rot.addItems(["0\u00b0", "90\u00b0", "180\u00b0", "270\u00b0"])
+            try:
+                rot_val = int(float(cfg.value("rotation", 0)))
+            except (TypeError, ValueError):
+                rot_val = 0
+            cb_rot.setCurrentIndex(rot_opts.index(rot_val) if rot_val in rot_opts else 0)
+            cb_mx = QCheckBox("Espejo en X (capa inferior B.Cu)")
+            cb_mx.setChecked(str(cfg.value("mirror_x", "false")).lower() == "true")
+            cb_my = QCheckBox("Espejo en Y")
+            cb_my.setChecked(str(cfg.value("mirror_y", "false")).lower() == "true")
+            f_pos.addRow("Origen X:", sp_ox)
+            f_pos.addRow("Origen Y:", sp_oy)
+            f_pos.addRow("Rotacion:", cb_rot)
+            f_pos.addRow(cb_mx)
+            f_pos.addRow(cb_my)
+
+            # Tarjeta 3: area de trabajo
+            f_area = card("Area de trabajo")
+            sp_ww = QDoubleSpinBox()
+            sp_ww.setRange(10.0, 1000.0)
+            sp_ww.setSingleStep(5.0)
+            sp_ww.setDecimals(1)
+            sp_ww.setValue(float(cfg.value("work_w", 170.0)))
+            sp_ww.setSuffix(" mm")
+            sp_wh = QDoubleSpinBox()
+            sp_wh.setRange(10.0, 1000.0)
+            sp_wh.setSingleStep(5.0)
+            sp_wh.setDecimals(1)
+            sp_wh.setValue(float(cfg.value("work_h", 150.0)))
+            sp_wh.setSuffix(" mm")
+            lbl_fit = QLabel("")
+            lbl_fit.setWordWrap(True)
+            f_area.addRow("Ancho X:", sp_ww)
+            f_area.addRow("Alto Y:", sp_wh)
+            f_area.addRow(lbl_fit)
+
+            # Tarjeta 4: velocidades
+            f_vel = card("Velocidades (mm/min)")
             sp_feed = QDoubleSpinBox()
             sp_feed.setRange(10, 2000)
             sp_feed.setSingleStep(50)
-            sp_feed.setValue(200)
+            sp_feed.setValue(float(cfg.value("feed", 200)))
             sp_feed.setSuffix(" mm/min")
-            form.addRow("Feed de corte:", sp_feed)
-
             sp_rapid = QDoubleSpinBox()
             sp_rapid.setRange(500, 10000)
             sp_rapid.setSingleStep(500)
-            sp_rapid.setValue(3000)
+            sp_rapid.setValue(float(cfg.value("rapid", 3000)))
             sp_rapid.setSuffix(" mm/min")
-            form.addRow("Feed de rapido:", sp_rapid)
+            f_vel.addRow("Corte:", sp_feed)
+            f_vel.addRow("Rapido:", sp_rapid)
 
-            d_layout.addLayout(form)
+            # Tarjeta 5: pluma (servo)
+            f_pen = card("Pluma (servo)")
+            cb_pen = QComboBox()
+            cb_pen.addItems(["M280 personalizado", "M301 firmware (angulos fijos)"])
+            cb_pen.setCurrentIndex(0 if str(cfg.value("pen_mode", "m280")) == "m280" else 1)
+            sp_up = QDoubleSpinBox()
+            sp_up.setRange(0.0, 180.0)
+            sp_up.setSingleStep(1.0)
+            sp_up.setDecimals(1)
+            sp_up.setValue(float(cfg.value("servo_up", 0.0)))
+            sp_up.setSuffix(" \u00b0")
+            sp_down = QDoubleSpinBox()
+            sp_down.setRange(0.0, 180.0)
+            sp_down.setSingleStep(1.0)
+            sp_down.setDecimals(1)
+            sp_down.setValue(float(cfg.value("servo_down", 95.0)))
+            sp_down.setSuffix(" \u00b0")
+            cb_p0 = QComboBox()
+            cb_p0.addItems(["M280 P0 S<angulo>", "M280 S<angulo>"])
+            cb_p0.setCurrentIndex(0 if str(cfg.value("servo_p0", "true")).lower() == "true" else 1)
+            lbl_pen = QLabel("Con M301 el firmware ignora arriba/abajo y usa 60/30 fijos (sin calibrar).")
+            lbl_pen.setWordWrap(True)
+            lbl_pen.setStyleSheet("color: #8e8e93; font-size: 10px;")
+            f_pen.addRow("Modo:", cb_pen)
+            f_pen.addRow("Arriba (S):", sp_up)
+            f_pen.addRow("Abajo (S):", sp_down)
+            f_pen.addRow("Formato:", cb_p0)
+            sp_vdown = QDoubleSpinBox()
+            sp_vdown.setRange(20.0, 240.0)
+            sp_vdown.setSingleStep(5.0)
+            sp_vdown.setDecimals(0)
+            sp_vdown.setValue(float(cfg.value("servo_down_speed", 60.0)))
+            sp_vdown.setSuffix(" \u00b0/s")
+            sp_vdown.setToolTip("Velocidad al bajar el plumon (20 a 240). Menos = contacto mas suave. Minimo 20: con menos el movimiento supera el timeout de 5 s del firmware.")
+            f_pen.addRow("Velocidad bajada:", sp_vdown)
+            f_pen.addRow(lbl_pen)
+
+            def pen_enabled():
+                on = cb_pen.currentIndex() == 0
+                sp_up.setEnabled(on)
+                sp_down.setEnabled(on)
+                cb_p0.setEnabled(on)
+            cb_pen.currentIndexChanged.connect(lambda _i: pen_enabled())
+            pen_enabled()
+
+            # Tarjeta 6: modo de maquina
+            f_mach = card("Modo de maquina")
+            conn = bool(getattr(self, "connected", False))
+            lbl_conn = QLabel("Conexion: " + ("conectada" if conn else "desconectada"))
+            lbl_conn.setStyleSheet("color: %s; background: transparent;" % ("#27C93F" if conn else "#FF5F56"))
+            lbl_mode = QLabel("Modo plotter: M301 al inicio, M302 al final")
+            lbl_mode.setWordWrap(True)
+            f_mach.addRow(lbl_conn)
+            f_mach.addRow(lbl_mode)
+
+            right.addStretch(1)
+            from PySide6.QtWidgets import QFrame, QWidget as _QW
+            inner = _QW()
+            inner.setLayout(right)
+            inner.setStyleSheet("background: transparent;")
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setStyleSheet("QScrollArea { background: transparent; }")
+            scroll.setWidget(inner)
+            body.addWidget(scroll, 2)
+            root.addLayout(body)
 
             btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            btns.button(QDialogButtonBox.Ok).setObjectName("DlgPrimary")
+            btns.button(QDialogButtonBox.Ok).setText("Generar")
+            btns.button(QDialogButtonBox.Cancel).setObjectName("DlgSecondary")
             btns.accepted.connect(dlg.accept)
             btns.rejected.connect(dlg.reject)
-            d_layout.addWidget(btns)
+            root.addWidget(btns)
+
+            # Conexiones: cada cambio actualiza el plano
+            def push_options():
+                preview.set_options(tool=sp_tool.value(), clearance=sp_clear.value(),
+                                    simplify_tol=sp_tol.value(),
+                                    modo=["contorno", "relleno", "ambos", "aislamiento", "aislamiento_edge"][cb_modo.currentIndex()],
+                                    hatch_pitch=sp_pitch.value(),
+                                    mirror_x=cb_mx.isChecked(), mirror_y=cb_my.isChecked(),
+                                    rotation=rot_opts[cb_rot.currentIndex()])
+
+            def push_origin():
+                preview.set_origin(sp_ox.value(), sp_oy.value())
+
+            def push_work():
+                preview.set_work(sp_ww.value(), sp_wh.value())
+
+            def show_status(txt, ok):
+                lbl_fit.setText(txt)
+                lbl_fit.setStyleSheet("color: %s; background: transparent; font-weight: 600;"
+                                      % ("#27C93F" if ok else "#FF5F56"))
+
+            for w_ in (sp_tool, sp_clear, sp_tol):
+                w_.valueChanged.connect(push_options)
+            for w_ in (cb_mx, cb_my):
+                w_.toggled.connect(push_options)
+            cb_rot.currentIndexChanged.connect(push_options)
+            for w_ in (sp_ox, sp_oy):
+                w_.valueChanged.connect(push_origin)
+            for w_ in (sp_ww, sp_wh):
+                w_.valueChanged.connect(push_work)
+            preview.originPicked.connect(lambda x, y: (sp_ox.setValue(x), sp_oy.setValue(y)))
+            preview.statusChanged.connect(show_status)
+
+            push_options()
+            push_origin()
+            push_work()
 
             if dlg.exec() != QDialog.Accepted:
+                self._log_system("Generacion cancelada: no se aceptaron los ajustes del Gerber", level="error")
                 return
 
             tool = sp_tool.value()
             clearance = sp_clear.value()
             feed = sp_feed.value()
             rapid = sp_rapid.value()
+            ox = sp_ox.value()
+            oy = sp_oy.value()
+            tol = sp_tol.value()
+            min_seg = sp_min.value()
+            _mk = ['contorno', 'relleno', 'ambos', 'aislamiento', 'aislamiento_edge']
+            modo = _mk[cb_modo.currentIndex()] if cb_modo.currentIndex() < len(_mk) else "contorno"
+            hatch_pitch = sp_pitch.value()
+            cfg.setValue("modo", modo)
+            _edge_text = _edge_data["text"] if modo == "aislamiento_edge" else None
+            cfg.setValue("hatch_pitch", hatch_pitch)
+            arc_fit = cb_arc.isChecked()
+            cfg.setValue("min_seg", min_seg)
+            cfg.setValue("arc_fit", arc_fit)
+            mirror_x = cb_mx.isChecked()
+            mirror_y = cb_my.isChecked()
+            rotation = rot_opts[cb_rot.currentIndex()]
+            work_w = sp_ww.value()
+            work_h = sp_wh.value()
+            pen_mode = "m280" if cb_pen.currentIndex() == 0 else "plotter"
+            servo_up = sp_up.value()
+            servo_down = sp_down.value()
+            servo_p0 = cb_p0.currentIndex() == 0
+            servo_down_speed = sp_vdown.value()
+            cfg.setValue("servo_down_speed", servo_down_speed)
+            cfg.setValue("pen_mode", pen_mode)
+            cfg.setValue("servo_up", servo_up)
+            cfg.setValue("servo_down", servo_down)
+            cfg.setValue("servo_p0", servo_p0)
+            for key, val in (("tool", tool), ("clearance", clearance), ("feed", feed),
+                             ("rapid", rapid), ("origin_x", ox), ("origin_y", oy),
+                             ("simplify_tol", tol), ("mirror_x", mirror_x), ("mirror_y", mirror_y),
+                             ("rotation", rotation), ("work_w", work_w), ("work_h", work_h)):
+                cfg.setValue(key, val)
         else:
             tool = float(params.get("tool", 0.20))
             clearance = float(params.get("clearance", 0.15))
             feed = float(params.get("feed", 200))
             rapid = float(params.get("rapid", 3000))
+            ox = float(params.get("origin_x", 0.0))
+            oy = float(params.get("origin_y", 0.0))
+            tol = float(params.get("simplify_tol", 0.02))
+            min_seg = float(params.get("min_seg", 0.05))
+            _mk2 = ['contorno', 'relleno', 'ambos', 'aislamiento', 'aislamiento_edge']
+            modo = str(params.get("modo", "contorno"))
+            _edge_text = None
+            hatch_pitch = float(params.get("hatch_pitch", 0.15))
+            arc_fit = bool(params.get("arc_fit", True))
+            mirror_x = bool(params.get("mirror_x", False))
+            mirror_y = bool(params.get("mirror_y", False))
+            rotation = int(params.get("rotation", 0))
+            work_w = float(params.get("work_w", 170.0))
+            work_h = float(params.get("work_h", 150.0))
+            pen_mode = str(params.get("pen_mode", "m280"))
+            servo_up = float(params.get("servo_up", 0.0))
+            servo_down = float(params.get("servo_down", 95.0))
+            servo_p0 = bool(params.get("servo_p0", True))
+            servo_down_speed = float(params.get("servo_down_speed", 60.0))
 
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -3276,17 +3605,59 @@ class MainWindow(QMainWindow):
             self._pending_layer = layer_name
             print(f"[GERBER] Capa detectada: {layer_name}")
 
+            # Capas de una misma placa: mismo prefijo de nombre. La primera capa
+            # fija el marco comun; las siguientes preguntan si se alinean con el.
+            board = _board_name(path)
+            board_refs = self.__dict__.setdefault("_board_refs", {})
+            ref_bounds = None
+            if board in board_refs:
+                resp = QMessageBox.question(
+                    self, "Alinear capas",
+                    f"Estas capas parecen ser de la placa '{board}'.\n\n"
+                    "¿Alinearlas con la misma referencia (contorno o la primera capa cargada)?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                if resp == QMessageBox.Yes:
+                    ref_bounds = board_refs[board]
+            else:
+                # Marco en el MISMO espacio que usa la conversion (rotacion y espejo
+                # incluidos). Los limites crudos del parser no coinciden si hay rotacion.
+                from gerber_parser import gerber_to_paths
+                _p, _b, _i = gerber_to_paths(gerber_text, tool, clearance,
+                                             simplify_tol=tol, mirror_x=mirror_x,
+                                             mirror_y=mirror_y, rotation=rotation)
+                if _b:
+                    board_refs[board] = (_b[0], _b[1])
+
             gcode, info = gerber_to_gcode(
                 gerber_text,
                 tool_diameter=tool,
                 clearance=clearance,
                 feed=feed,
                 rapid=rapid,
+                origin_x=ox,
+                origin_y=oy,
+                ref_bounds=ref_bounds,
+                simplify_tol=tol,
+                mirror_x=mirror_x,
+                mirror_y=mirror_y,
+                rotation=rotation,
+                work_w=work_w,
+                work_h=work_h,
+                pen_mode=pen_mode,
+                min_seg=min_seg,
+                modo="aislamiento" if modo in ("aislamiento","aislamiento_edge") else modo,
+                hatch_pitch=hatch_pitch,
+                edge_gerber=_edge_text if modo == "aislamiento_edge" else None,
+                arc_fit=arc_fit,
+                servo_up=servo_up,
+                servo_down=servo_down,
+                servo_p0=servo_p0,
+                servo_down_speed=servo_down_speed,
             )
             # Simplificacion de trayectoria (Douglas-Peucker, 0.01 mm).
             try:
                 from gcode_optimizer import optimize_lines
-                gcode, _gst = optimize_lines(list(gcode), tol=0.01)
+                gcode, _gst = optimize_lines(list(gcode), tol=0.02)
             except Exception as opt_err:
                 self._log_system("Optimizador Gerber omitido: %s" % opt_err, level="error")
 
@@ -3445,6 +3816,9 @@ class MainWindow(QMainWindow):
     def _load_gcode(self, lines, name, add_to_list=True, layer_name="GCode"):
         self.gcode_lines = lines
         self.layer_gcodes[layer_name] = list(lines)
+        # El trabajo se envia desde el editor: sin esto, Convertir se ignora
+        # y se envia el texto viejo del editor (sin G0).
+        self.editor.load_lines(list(lines))
 
         # Solo añadir a la lista la PRIMERA vez
         if add_to_list:
@@ -3599,6 +3973,9 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_line_received(self, line):
+        if line.startswith("PERF1 ") or line.startswith("PERF2 "):
+            self._handle_perf_line(line)
+            return
         if line.startswith("PULSE "):
             values = {key.lower(): value for key, value in
                       re.findall(r"([A-Za-z]+)=([-+]?\d+(?:\.\d+)?)", line)}
@@ -3659,6 +4036,15 @@ class MainWindow(QMainWindow):
                 return
 
         if line == "OK" and self.job_running:
+            # Diagnostico: hora de cada OK durante el trabajo (para medir la latencia).
+            try:
+                import time as _tm
+                _t = _tm.time()
+                _idx = self._job_pending[0] if self._job_pending else -1
+                with open(CONSOLE_LOG_PATH.parent / "ok_tiempos.log", "a", encoding="utf-8") as _f:
+                    _f.write(f"{_tm.strftime('%H:%M:%S', _tm.localtime(_t))}.{int((_t % 1) * 1000):03d} OK linea={_idx} pend={len(self._job_pending)}\n")
+            except Exception:
+                pass
             if self._job_ack_events:
                 ack_event = self._job_ack_events.popleft()
                 if ack_event is not None:
@@ -3745,6 +4131,37 @@ class MainWindow(QMainWindow):
             level="error",
         )
         JOB_RECORDER.finish("abortado: " + reason)
+
+    def _handle_perf_line(self, line):
+        """Telemetria DWT del firmware. Solo al log de consola y al panel;
+        nunca a la consola visible ni a la cuenta de OK del trabajo."""
+        _append_console_log("RX", line)
+        values = {k: int(v) for k, v in re.findall(r"([A-Za-z_]+)=(\d+)", line)}
+
+        def us(key):
+            return values.get(key, 0) / 1000.0
+
+        if line.startswith("PERF1 "):
+            self.lbl_perf_load.setText(f"{values.get('load', 0)} %")
+            self.lbl_perf_isr.setText(f"{values.get('isr', 0)} %  (interrupcion)")
+            self.lbl_perf_loop.setText(f"{us('loop_max'):.1f} us  (media {us('loop_avg'):.1f})")
+            secciones = {k: values.get(k, 0) for k in
+                         ("poll", "prot", "usb", "cam", "plan", "cnc", "led", "scr")}
+            top = max(secciones, key=secciones.get)
+            self.lbl_perf_sect.setText(f"{top}: {us(top):.1f} us")
+        else:
+            self.lbl_perf_enq.setText(
+                f"media {us('enq_avg'):.1f} / max {us('enq_max'):.1f} us (n={values.get('enq_n', 0)})")
+            self.lbl_perf_mov.setText(
+                f"media {us('mov_avg'):.1f} / max {us('mov_max'):.1f} us (n={values.get('mov_n', 0)})")
+            self.lbl_perf_prod.setText(f"{us('prod_max'):.1f} us")
+            self.lbl_perf_ur.setText(str(values.get('ur', 0)))
+            self.lbl_perf_free.setText(f"{values.get('free', 0)} / 256")
+
+        bridge = getattr(self, "web_bridge", None)
+        if bridge is not None:
+            kind = "PERF1" if line.startswith("PERF1 ") else "PERF2"
+            bridge.perfChanged.emit({"kind": kind, "values": values})
 
     def _parse_incoming(self, line):
         # re.search en vez de re.match: DONE X:... Y:... tambien encaja
@@ -4027,7 +4444,7 @@ class MainWindow(QMainWindow):
                                                clearance=0.15)
                 try:
                     from gcode_optimizer import optimize_lines
-                    gcode, _gst = optimize_lines(list(gcode), tol=0.01)
+                    gcode, _gst = optimize_lines(list(gcode), tol=0.02)
                 except Exception as opt_err:
                     self._log_system("Optimizador Gerber omitido: %s" % opt_err, level="error")
                 layer_name = _detect_gerber_layer(os.path.basename(path))

@@ -272,7 +272,7 @@ def paths_to_gcode(paths, feed=300.0, rapid=3000.0,
     lines.append(f"; Paths: {len(paths)}")
     lines.append("G21          ; milimetros")
     lines.append("G90          ; coordenadas absolutas")
-    lines.append(f"G0 Z{pen_up:.3f} F{rapid:.1f}")
+    lines.append("M301         ; modo plotter: G0 levanta el plumon, G1 lo baja")
 
     total_dist = 0.0
 
@@ -281,7 +281,6 @@ def paths_to_gcode(paths, feed=300.0, rapid=3000.0,
             continue
         x0, y0 = path[0]
         lines.append(f"G0 X{x0 + origin_x:.3f} Y{y0 + origin_y:.3f}")
-        lines.append(f"G1 Z{pen_down:.3f} F{feed:.1f}")
 
         prev_x, prev_y = x0, y0
         for (px, py) in path[1:]:
@@ -290,9 +289,9 @@ def paths_to_gcode(paths, feed=300.0, rapid=3000.0,
             total_dist += d
             prev_x, prev_y = px, py
 
-        lines.append(f"G1 Z{pen_up:.3f} F{rapid:.1f}")
 
     lines.append(f"G0 X{origin_x:.3f} Y{origin_y:.3f}")
+    lines.append("M302         ; desactiva modo plotter")
     lines.append("M30          ; fin de programa")
     lines.append(f"; Distancia total: {total_dist:.1f} mm")
 

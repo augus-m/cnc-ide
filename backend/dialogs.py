@@ -416,3 +416,91 @@ class SettingsDialog(QDialog):
             "timestamps": s.value("timestamps", True, type=bool),
             "echo": s.value("echo", True, type=bool),
         }
+
+
+class GlassDialog(QDialog):
+    """Dialogo estilo cristal: sin marco del sistema, botones tipo macOS
+    (cerrar, minimizar, zoom) y arrastre desde la barra superior."""
+
+    def __init__(self, title, parent=None):
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QColor
+        from PySide6.QtWidgets import (QFrame, QGraphicsDropShadowEffect,
+                                       QHBoxLayout, QLabel, QPushButton, QVBoxLayout)
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setWindowTitle(title)
+        self._drag_offset = None
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(14, 14, 14, 14)   # margen para la sombra
+
+        self.card = QFrame()
+        self.card.setObjectName("GlassCard")
+        self.card.setStyleSheet(
+            "#GlassCard { background-color: rgba(30, 30, 35, 0.92);"
+            " border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px; }"
+            "QLabel { color: #e8e8eb; background: transparent; }"
+        )
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(32)
+        shadow.setOffset(0, 10)
+        shadow.setColor(QColor(0, 0, 0, 120))
+        self.card.setGraphicsEffect(shadow)
+        outer.addWidget(self.card)
+
+        body = QVBoxLayout(self.card)
+        body.setContentsMargins(0, 0, 0, 18)
+        body.setSpacing(0)
+
+        bar = QHBoxLayout()
+        bar.setContentsMargins(14, 10, 14, 4)
+        dots = QHBoxLayout()
+        dots.setSpacing(8)
+        for color, handler in (("#FF5F56", self.reject),
+                               ("#FFBD2E", self.showMinimized),
+                               ("#27C93F", lambda: None)):
+            b = QPushButton()
+            b.setFixedSize(12, 12)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setStyleSheet(
+                f"QPushButton {{ background-color: {color}; border: none; border-radius: 6px; }}"
+                "QPushButton:hover { opacity: 0.8; }")
+            b.clicked.connect(handler)
+            dots.addWidget(b)
+        bar.addLayout(dots)
+        lbl = QLabel(title)
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet("color: #8e8e93; font-size: 12px; font-weight: 600; background: transparent;")
+        bar.addWidget(lbl, 1)
+        spacer = QFrame()
+        spacer.setFixedWidth(12 * 3 + 16)
+        bar.addWidget(spacer)
+        body.addLayout(bar)
+
+        self.content_layout = QVBoxLayout()
+        self.content_layout.setContentsMargins(20, 12, 20, 0)
+        self.content_layout.setSpacing(12)
+        body.addLayout(self.content_layout)
+
+        self._title_bar_height = 40
+
+    def mousePressEvent(self, event):
+        from PySide6.QtCore import Qt
+        if event.button() == Qt.LeftButton and event.position().y() <= self._title_bar_height:
+            self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_offset is not None:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)

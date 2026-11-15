@@ -13,7 +13,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QSettings, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QCursor
+from PySide6.QtCore import QPoint, QObject, QSettings, QTimer, QUrl, Signal, Slot
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMessageBox
@@ -33,9 +34,11 @@ class CncWebBridge(QObject):
 
     stateChanged = Signal(dict)
     pulseStatsChanged = Signal(dict)
+    perfChanged = Signal(dict)
     consoleChanged = Signal(str)
     programChanged = Signal(dict)
     positionChanged = Signal(float, float, float, bool, bool)
+    editorReturned = Signal(str)
 
     def __init__(self, window: "LiquidGlassWindow"):
         super().__init__(window)
@@ -43,6 +46,7 @@ class CncWebBridge(QObject):
         self.backend = window.backend
         self._last_console = None
         self._last_program_signature = None
+        self.editor_text = ""
 
     def _log(self, message: str, level: str = "info") -> None:
         self.backend._log_system(message, level=level)
@@ -175,7 +179,14 @@ class CncWebBridge(QObject):
 
     @Slot(str, str, float, float)
     def machineCommand(self, name: str, command: str, x: float, y: float) -> None:
-        del name, x, y
+        del x, y
+        if str(command).strip() == "$H":
+            # Home: primero limpia la alarma ($X), sube el lapiz (M280 S0) y despues
+            # hace el homing ($H). Si $H se manda con la alarma activa, no responde.
+            self.sendCommand("$X")
+            self.sendCommand("M280 S0")
+            QTimer.singleShot(1500, lambda: self.sendCommand("$H"))
+            return
         self.sendCommand(command)
 
     @Slot(str)
@@ -505,6 +516,90 @@ class CncWebBridge(QObject):
             self._log(f"Monitor: captura eliminada {stem}")
         return removed
 
+    # ---- Biblioteca de archivos G-code del editor ----
+    GCODE_DIR = APP_DIR / "data" / "gcode"
+    GCODE_EXTS = (".gcode", ".nc", ".gc", ".tap")
+
+    def _gcode_path(self, name: str) -> "Path | None":
+        clean = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(name or "")).strip("._")[:120]
+        if not clean:
+            return None
+        if not clean.lower().endswith(self.GCODE_EXTS):
+            clean += ".gcode"
+        path = (self.GCODE_DIR / clean).resolve()
+        if path.parent != self.GCODE_DIR.resolve():
+            return None
+        return path
+
+    @Slot(result="QVariantList")
+    def listGcodeFiles(self) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        if self.GCODE_DIR.is_dir():
+            files = [f for f in self.GCODE_DIR.iterdir() if f.is_file() and f.suffix.lower() in self.GCODE_EXTS]
+            for f in sorted(files, key=lambda p: p.stat().st_mtime, reverse=True):
+                st = f.stat()
+                items.append({
+                    "name": f.name,
+                    "size": st.st_size,
+                    "modified": time.strftime("%d/%m/%Y %H:%M", time.localtime(st.st_mtime)),
+                })
+        return items
+
+    @Slot(str, result="QVariantMap")
+    def readGcodeFile(self, name: str) -> dict[str, Any]:
+        path = self._gcode_path(name)
+        if path is None or not path.is_file():
+            return {"ok": False, "error": "Archivo no encontrado"}
+        try:
+            return {"ok": True, "name": path.name, "text": path.read_text(encoding="utf-8", errors="replace")}
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    @Slot(str, str, bool, result="QVariantMap")
+    def writeGcodeFile(self, name: str, text: str, overwrite: bool) -> dict[str, Any]:
+        path = self._gcode_path(name)
+        if path is None:
+            return {"ok": False, "error": "Nombre de archivo no válido"}
+        if path.exists() and not overwrite:
+            return {"ok": False, "exists": True, "error": "Ya existe un archivo con ese nombre"}
+        try:
+            self.GCODE_DIR.mkdir(parents=True, exist_ok=True)
+            path.write_text(str(text), encoding="utf-8")
+        except OSError as exc:
+            self._log(f"G-code: no se pudo guardar {path.name}: {exc}", level="error")
+            return {"ok": False, "error": str(exc)}
+        self._log(f"G-code: archivo guardado {path.name}")
+        return {"ok": True, "name": path.name}
+
+    @Slot(str, result=bool)
+    def deleteGcodeFile(self, name: str) -> bool:
+        path = self._gcode_path(name)
+        if path is None or not path.is_file():
+            return False
+        try:
+            path.unlink()
+        except OSError:
+            return False
+        self._log(f"G-code: archivo eliminado {path.name}")
+        return True
+
+    @Slot(str)
+    def pushEditorText(self, text: str) -> None:
+        self.editor_text = str(text)
+
+    @Slot(result=str)
+    def getEditorText(self) -> str:
+        return self.editor_text
+
+    @Slot()
+    def detachEditor(self) -> None:
+        self.window.openDetachedEditor(QCursor.pos())
+
+    @Slot(str)
+    def closeDetachedEditor(self, text: str) -> None:
+        self.editor_text = str(text)
+        self.window.closeDetachedEditor()
+
     @Slot(str, str, bool, str, result="QVariantMap")
     def saveWithDialog(self, default_name: str, content: str, is_base64: bool, filter_label: str) -> dict[str, Any]:
         suggested = str(Path.home() / Path(default_name).name)
@@ -615,6 +710,50 @@ class CncWebBridge(QObject):
         except OSError as exc:
             return {'ok': False, 'error': str(exc)}
         return {'ok': True, 'file': latest.name, 'lines': rows[-2000:]}
+
+    @Slot(result="QVariantList")
+    def listHistorySources(self) -> list[dict[str, Any]]:
+        sources: list[dict[str, Any]] = []
+        hist = APP_DIR / 'data' / 'historial'
+        if hist.is_dir():
+            for f in sorted(hist.glob('semana_*.log'), reverse=True):
+                sources.append({'id': 'semana:' + f.name, 'label': 'Historial ' + f.name})
+        trab = APP_DIR / 'data' / 'trabajos'
+        if trab.is_dir():
+            for d in sorted((p for p in trab.iterdir() if p.is_dir()), reverse=True):
+                sources.append({'id': 'trabajo:' + d.name, 'label': 'Trabajo ' + d.name.replace('_', ' ')})
+        return sources
+
+    @Slot(str, result="QVariantMap")
+    def readHistorySource(self, source_id: str) -> dict[str, Any]:
+        kind, _, name = str(source_id or '').partition(':')
+        if not kind:
+            return self.readHistory()
+        if kind == 'semana':
+            f = APP_DIR / 'data' / 'historial' / Path(name).name
+            if not (f.name.startswith('semana_') and f.suffix == '.log' and f.is_file()):
+                return {'ok': False, 'error': 'archivo no valido'}
+            try:
+                rows = f.read_text(encoding='utf-8', errors='replace').splitlines()
+            except OSError as exc:
+                return {'ok': False, 'error': str(exc)}
+            return {'ok': True, 'file': f.name, 'lines': rows[-2000:]}
+        if kind == 'trabajo':
+            d = APP_DIR / 'data' / 'trabajos' / Path(name).name
+            if not d.is_dir():
+                return {'ok': False, 'error': 'trabajo no valido'}
+            lines: list[str] = []
+            for fn in ('resumen.md', 'eventos.log', 'errores.log'):
+                p = d / fn
+                if p.is_file():
+                    lines.append('=== ' + fn + ' ===')
+                    try:
+                        lines.extend(p.read_text(encoding='utf-8', errors='replace').splitlines()[-500:])
+                    except OSError as exc:
+                        lines.append('(no se pudo leer: ' + str(exc) + ')')
+                    lines.append('')
+            return {'ok': True, 'file': d.name, 'lines': lines}
+        return {'ok': False, 'error': 'fuente no valida'}
 
     def buildState(self) -> dict[str, Any]:
         w = self.backend
@@ -768,6 +907,29 @@ class CncWebBridge(QObject):
             self.publishState()
 
 
+class DetachedEditorWindow(QMainWindow):
+    """Ventana nativa independiente con el editor G-code; usa el mismo puente y la misma interfaz."""
+
+    def __init__(self, owner: "LiquidGlassWindow", cursor_pos: QPoint):
+        super().__init__()
+        self.owner = owner
+        self.setWindowTitle("Editor G-code")
+        self.resize(900, 640)
+        self.move(cursor_pos - QPoint(60, 15))
+        self.view = QWebEngineView(self)
+        self.setCentralWidget(self.view)
+        self.channel = QWebChannel(self.view.page())
+        self.view.page().setWebChannel(self.channel)
+        self.channel.registerObject("cnc", owner.web_bridge)
+        url = QUrl.fromLocalFile(str(APP_DIR / "index.html"))
+        url.setQuery("panel=editor")
+        self.view.setUrl(url)
+
+    def closeEvent(self, event) -> None:
+        self.owner.onDetachedEditorClosed()
+        super().closeEvent(event)
+
+
 class LiquidGlassWindow(NativeBackendWindow):
     """Reutiliza la lógica CNC, sustituyendo la interfaz nativa por la plantilla."""
 
@@ -832,6 +994,23 @@ class LiquidGlassWindow(NativeBackendWindow):
             self.editor.set_job_line(line_num)
 
     @Slot(bool)
+    def openDetachedEditor(self, cursor_pos: QPoint) -> None:
+        if getattr(self, "_detached_editor", None) is not None:
+            self._detached_editor.raise_()
+            self._detached_editor.activateWindow()
+            return
+        self._detached_editor = DetachedEditorWindow(self, cursor_pos)
+        self._detached_editor.show()
+
+    def closeDetachedEditor(self) -> None:
+        win = getattr(self, "_detached_editor", None)
+        if win is not None:
+            win.close()
+
+    def onDetachedEditorClosed(self) -> None:
+        self._detached_editor = None
+        self.web_bridge.editorReturned.emit(self.web_bridge.editor_text)
+
     def _on_page_loaded(self, ok: bool) -> None:
         if ok:
             self.web_bridge.publishState()

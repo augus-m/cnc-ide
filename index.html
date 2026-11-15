@@ -354,6 +354,14 @@
         .pill-estop:hover { background: #ff6b63; }
 
 
+        /* Filas del panel CARGA H723 ocultas (datos siguen en JS) */
+        .perf-hide { display: none !important; }
+        /* Boton Home del panel derecho: sigue las variables del tema */
+        .home-view-btn { background: var(--widget-bg); border: 1px solid var(--glass-border); border-radius: 10px; color: var(--text-main); font-weight: 600; font-size: 11px; cursor: pointer; transition: background 0.2s; }
+        .home-view-btn:hover { background: var(--glass-highlight); }
+        .servo-window.minimized .motor-live-stats, .servo-window.minimized .motor-live-caption, .servo-window.minimized .motor-toolbar, .servo-window.minimized .motor-analysis { display: none; }
+        .servo-samples { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: var(--text-muted); padding: 4px 8px; line-height: 1.5; }
+
         /* ===== JOG / MÁQUINA / VISORES ===== */
         .visualizer { background-image: none !important; }
         .vcanvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; cursor: grab; outline: none; touch-action: none; }
@@ -447,7 +455,7 @@
            VENTANAS FLOTANTES DEL MONITOR DE MOTORES
            ========================================================= */
         .windows-layer { position: fixed; inset: 0; pointer-events: none; z-index: 8000; }
-        .motor-window {
+        .motor-window, .h723-window {
             position: absolute; pointer-events: auto;
             display: flex; flex-direction: column; overflow: hidden; padding: 0;
             resize: both; min-width: 360px; min-height: 250px;
@@ -459,7 +467,7 @@
                         left 0.2s ease, top 0.2s ease,
                         box-shadow 0.16s ease, opacity 0.18s ease, transform 0.18s ease;
         }
-        .motor-window::before {
+        .motor-window::before, .h723-window::before {
             content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
             background: linear-gradient(145deg, rgba(255,255,255,0.12), transparent 38%, rgba(255,255,255,0.025));
             z-index: 0;
@@ -472,16 +480,104 @@
         .editor-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .editor-toolbar .btn-term { min-width: 76px; }
         .editor-hint { margin-left: auto; color: var(--text-muted); font-size: 10px; }
-        .gcode-editor {
-            flex: 1; min-height: 0; width: 100%; resize: none; outline: none;
-            border: 1px solid var(--glass-border); border-radius: 14px; padding: 14px;
-            background: rgba(0,0,0,0.28); color: var(--text-main);
-            font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            tab-size: 4; user-select: text; white-space: pre; overflow: auto;
+        /* Editor G-code avanzado: capa de resaltado + textarea transparente encima (mismo texto y misma métrica) */
+        .gc-wrap {
+            --gc-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            --gc-size: 12px; --gc-lh: 18.6px; --gc-tab: 4; --gc-left: 58px;
+            --gc-bg: rgba(30,30,30,0.55); --gc-curbg: rgba(255,255,255,0.08); --gc-sel: rgba(86,156,214,0.35);
+            --gc-fg: #d4d4d4; --gc-caret: #d4d4d4; --gc-lineno: #6e7681; --gc-lineno-bg: rgba(255,255,255,0.04);
+            --gc-c: #6a9955; --gc-g: #569cd6; --gc-m: #c586c0; --gc-t: #4ec9b0; --gc-f: #dcdcaa; --gc-s: #ce9178; --gc-n: #808080; --gc-axis: #9cdcfe; --gc-num: #b5cea8;
+            position: relative; flex: 1; min-height: 0; overflow: hidden;
+            border: 1px solid var(--glass-border); border-radius: 14px;
+            background: var(--gc-bg);
+            backdrop-filter: blur(22px) saturate(160%); -webkit-backdrop-filter: blur(22px) saturate(160%);
             box-shadow: inset 0 1px 10px rgba(0,0,0,0.18);
         }
-        [data-theme="white"] .gcode-editor, [data-theme="text"] .gcode-editor { background: rgba(255,255,255,0.65); }
-        .gcode-editor::placeholder { color: var(--text-muted); }
+        .gc-layer {
+            position: absolute; inset: 0; margin: 0; box-sizing: border-box;
+            border: 0; outline: 0; resize: none; background: transparent;
+            padding: 10px 14px 14px var(--gc-left);
+            font-family: var(--gc-font); font-size: var(--gc-size); line-height: var(--gc-lh);
+            font-kerning: none; font-variant-ligatures: none; letter-spacing: normal;
+            tab-size: var(--gc-tab); overflow: hidden; text-align: left;
+        }
+        .gc-wrap:not(.gc-wrapmode) .gc-layer { white-space: pre; overflow-wrap: normal; }
+        .gc-wrap.gc-wrapmode .gc-layer { white-space: pre-wrap; overflow-wrap: anywhere; }
+        .gc-hl { pointer-events: none; color: var(--gc-fg); }
+        .gcode-editor {
+            color: transparent; caret-color: var(--gc-caret); overflow: auto; user-select: text;
+            scrollbar-width: none; -webkit-font-smoothing: antialiased;
+        }
+        .gcode-editor::-webkit-scrollbar { display: none; }
+        .gcode-editor::selection { background: var(--gc-sel); color: transparent; }
+        .gcode-editor::placeholder { color: var(--gc-lineno); opacity: 1; }
+        .gc-c { color: var(--gc-c); font-style: italic; }
+        .gc-g { color: var(--gc-g); }
+        .gc-m { color: var(--gc-m); }
+        .gc-t { color: var(--gc-t); }
+        .gc-f { color: var(--gc-f); }
+        .gc-s { color: var(--gc-s); }
+        .gc-n { color: var(--gc-n); }
+        .gc-axis { color: var(--gc-axis); }
+        .gc-num { color: var(--gc-num); }
+        .gc-gutter {
+            position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--gc-left) - 10px); box-sizing: border-box;
+            padding: 10px 10px 14px 0; text-align: right; white-space: pre; overflow: hidden;
+            font-family: var(--gc-font); font-size: var(--gc-size); line-height: var(--gc-lh);
+            color: var(--gc-lineno); background: var(--gc-lineno-bg); border-right: 1px solid rgba(255,255,255,0.06);
+            user-select: none; pointer-events: none;
+        }
+        .gc-wrap.gc-nolines .gc-gutter { display: none; }
+        .gc-cur { position: absolute; left: 0; right: 0; top: 0; height: var(--gc-lh); background: var(--gc-curbg); pointer-events: none; display: none; }
+        .gc-cur.on { display: block; }
+        /* Biblioteca de archivos G-code (lista lateral del editor) */
+        .gc-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 10px; transition: grid-template-columns .25s ease; }
+        .gc-body.files-hidden { grid-template-columns: 0px minmax(0, 1fr); gap: 0; }
+        .gc-files { min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden; transition: opacity .2s ease, transform .25s ease; }
+        .gc-body.files-hidden .gc-files { opacity: 0; transform: translateX(-16px); pointer-events: none; }
+        .gc-files-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+        .gc-files-title { flex: 1; min-width: 0; font-size: 10px; letter-spacing: .04em; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .gc-files-head .mini-btn { font-size: 10px; padding: 3px 8px; }
+        .gc-file-items { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+        .gc-file-item { position: relative; display: flex; flex-direction: column; align-items: flex-start; width: 100%; box-sizing: border-box; padding: 6px 26px 6px 8px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--text-main); cursor: pointer; text-align: left; }
+        .gc-file-item strong { max-width: 100%; font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .gc-file-item span { color: var(--text-muted); font-size: 10px; }
+        .gc-file-item:hover { background: rgba(127,127,127,.12); }
+        .gc-file-item.active { border-color: rgba(127,127,127,.5); background: rgba(127,127,127,.18); }
+        .gc-file-del { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; line-height: 16px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-muted); font-size: 14px; cursor: pointer; opacity: 0; }
+        .gc-file-item:hover .gc-file-del, .gc-file-item.active .gc-file-del { opacity: 1; }
+        .gc-file-del:hover { background: rgba(255,69,58,.25); color: #ff453a; }
+        .gc-files { box-sizing: border-box; padding: 10px; border-radius: 18px; border: 1px solid var(--glass-border); background: rgba(20,20,22,0.42); backdrop-filter: blur(22px) saturate(160%); -webkit-backdrop-filter: blur(22px) saturate(160%); box-shadow: inset 0 1px 1px var(--glass-highlight), 0 8px 24px rgba(0,0,0,0.12); }
+        .gc-body.files-hidden .gc-files { padding: 0; border-color: transparent; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+        .gc-files-head { flex-wrap: wrap; }
+        .gc-files-title { flex: 0 0 100%; }
+        .gc-files-head .mini-btn { flex: 1 1 0; text-align: center; }
+        .gc-settings {
+            position: absolute; top: 8px; right: 8px; bottom: 8px; width: 264px; max-width: calc(100% - 16px);
+            box-sizing: border-box; padding: 12px 14px; overflow-y: auto; display: none; z-index: 5;
+            border-radius: 14px; border: 1px solid rgba(255,255,255,0.14); color: #f5f5f7;
+            background: rgba(28,28,30,0.8);
+            backdrop-filter: blur(26px) saturate(180%); -webkit-backdrop-filter: blur(26px) saturate(180%);
+            box-shadow: 0 14px 34px rgba(0,0,0,0.38);
+            font: 11px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        }
+        .gc-settings.open { display: block; }
+        .gc-set-title { margin: 12px 0 6px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; opacity: .55; }
+        .gc-set-title:first-child { margin-top: 0; }
+        .gc-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 0; }
+        .gc-row > span { white-space: nowrap; }
+        .gc-row input[type="color"] { width: 36px; height: 20px; padding: 0; border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; background: none; cursor: pointer; }
+        .gc-row select { max-width: 150px; background: rgba(255,255,255,0.08); color: #f5f5f7; border: 1px solid rgba(255,255,255,0.14); border-radius: 7px; padding: 3px 6px; font: inherit; }
+        .gc-row input[type="range"] { width: 118px; }
+        .gc-row input[type="checkbox"] { accent-color: #0a84ff; }
+
+        /* Iconos de barra y ajustes; barras de desplazamiento del panel transparentes */
+        .editor-toolbar .gc-icon-btn { min-width: 0; width: 30px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+        .gc-settings { overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.22) transparent; }
+        .gc-settings::-webkit-scrollbar { width: 6px; height: 0; background: transparent; }
+        .gc-settings::-webkit-scrollbar-track { background: transparent; }
+        .gc-settings::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 3px; }
+        .gc-row select { width: 130px; text-overflow: ellipsis; }
         .glass { box-shadow: 0 10px 30px rgba(0,0,0,0.14), inset 0 1px 1px var(--glass-highlight); }
         .widget, .action-pill, .bubble-btn, .mini-btn, .top-btn, .settings-btn-action {
             backdrop-filter: blur(18px) saturate(170%); -webkit-backdrop-filter: blur(18px) saturate(170%);
@@ -577,6 +673,10 @@
         .h-SYS { color: var(--text-muted); }
         .motor-window.minimized .monitor-ed-body { display: none; }
         .monitor-ed-body { display: grid; grid-template-columns: 190px 1fr 200px; gap: 10px; height: calc(100% - 44px); padding: 10px 12px; box-sizing: border-box; min-height: 0; }
+        .monitor-ed-body { transition: grid-template-columns .25s ease; }
+        .monitor-ed-body.caps-hidden { grid-template-columns: 0px 1fr 200px; }
+        .monitor-ed-list { transition: opacity .2s ease, transform .25s ease; }
+        .monitor-ed-body.caps-hidden .monitor-ed-list { opacity: 0; transform: translateX(-16px); pointer-events: none; overflow: hidden; padding: 0; border: 0; }
         .monitor-ed-list, .monitor-ed-tools { overflow: auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
         .monitor-ed-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
         .monitor-ed-toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -597,6 +697,27 @@
         .monitor-ed-mark .motor-action { margin-left: auto; font-size: 10px; padding: 2px 8px; }
         .monitor-ed-tools select { font-size: 11px; padding: 4px; border-radius: 8px; max-width: 100%; background: rgba(127,127,127,.15); color: var(--text-main); border: 1px solid rgba(127,127,127,.35); }
         .monitor-ed-tools select option { background: var(--bg-solid); color: var(--text-main); }
+        .h723-window.dragging { transition: box-shadow 0.2s ease; will-change: left, top; }
+        .h723-window.dragging, .h723-window.dragging * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+        .h723-window.dragging .motor-titlebar { cursor: grabbing; }
+        .h723-window.maximized .motor-titlebar { cursor: default; }
+        .h723-window.minimized .h723-body { display: none; }
+        .h723-body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; padding: 12px 14px; box-sizing: border-box; }
+        .h723-live { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-muted); }
+        .h723-live strong { color: var(--text-main); font-weight: 600; }
+        .h723-toolbar { flex-wrap: wrap; gap: 6px; }
+        .h723-range { font-size: 11px; padding: 4px 8px; border-radius: 8px; background: rgba(127,127,127,.15); color: var(--text-main); border: 1px solid rgba(127,127,127,.35); }
+        .h723-range option { background: var(--bg-solid); color: var(--text-main); }
+        .h723-content { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+        .h723-caption { font-size: 10px; color: var(--text-muted); }
+        .h723-chart { position: relative; flex: 1; min-height: 110px; border-radius: 12px; background: rgba(0,0,0,.18); overflow: hidden; }
+        .h723-chart canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+        .h723-table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .h723-table th, .h723-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid rgba(127,127,127,.18); white-space: nowrap; color: var(--text-main); }
+        .h723-table th { color: var(--text-muted); font-size: 10px; font-weight: 600; letter-spacing: .04em; }
+        .h723-table .num { text-align: right; }
+        .h723-bar { height: 8px; min-width: 90px; border-radius: 4px; background: rgba(127,127,127,.18); overflow: hidden; }
+        .h723-bar > span { display: block; height: 100%; background: #0A84FF; border-radius: 4px; }
 
         /* =========================================================
            VENTANA DE AJUSTES
@@ -1036,6 +1157,14 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                     Monitor Motores
                 </div>
+                <div class="menu-item action-btn" onclick="openServoWindow()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 9V3"/><path d="M12 21a9 9 0 0 1-9-9h4"/><path d="M21 12h-4"/></svg>
+                    Monitor Servo
+                </div>
+                <div class="menu-item action-btn" onclick="openH723Window()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/></svg>
+                    Monitor H723
+                </div>
                 <div class="menu-item action-btn" onclick="openMonitorEditor()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
                     Editor Monitor
@@ -1204,17 +1333,36 @@
                     <div class="data-row"><span>Restante</span><span class="val-data">-</span></div>
                 </div>
 
+                <div class="widget">
+                    <div class="widget-title">CARGA H723</div>
+                    <div class="helper-text" style="margin-bottom:6px;">Lo que importa: <b>ISR TIM6</b> (generador de pasos) y <b>Underruns</b> (debe quedar en 0). Ocupación lazo no es carga real: el bucle gira sin pausa.</div>
+                    <div class="data-row" title="Porcentaje del tiempo en que el bucle principal esta trabajando. Gira sin pausa, asi que casi siempre marca alto; no indica saturacion."><span>Ocupación lazo</span><span class="val-data" id="perf-load">-</span></div>
+                    <div class="data-row" title="Generador de pasos (interrupcion TIM6). Lo mas critico: debe quedarse bajo."><span>ISR TIM6</span><span class="val-data" id="perf-isr">-</span></div>
+                    <div class="data-row"><span>Lazo max</span><span class="val-data" id="perf-loop">-</span></div>
+                    <div class="data-row perf-hide"><span>Mayor seccion</span><span class="val-data" id="perf-sect">-</span></div>
+                    <div class="data-row perf-hide"><span>Planner enqueue</span><span class="val-data" id="perf-enq">-</span></div>
+                    <div class="data-row perf-hide"><span>MoveXY</span><span class="val-data" id="perf-mov">-</span></div>
+                    <div class="data-row perf-hide"><span>Productor max</span><span class="val-data" id="perf-prod">-</span></div>
+                    <div class="data-row" title="Veces que el motor se quedo sin datos durante el movimiento. Debe ser 0."><span>Underruns</span><span class="val-data" id="perf-ur">-</span></div>
+                    <div class="data-row" title="Huecos libres en la cola del planner (de 256). Si baja mucho durante un trabajo, el movimiento puede quedarse sin datos."><span>Cola libre</span><span class="val-data" id="perf-free">-</span></div>
+                    <div class="data-row" title="Tiempo util del bucle sin contar interrupciones (USB, TIM6)."><span>Trabajo CPU</span><span class="val-data" id="perf-trab">-</span></div>
+                    <div class="data-row perf-hide"><span>Actividad real</span><span class="val-data" id="perf-act">-</span></div>
+                    <div class="data-row perf-hide"><span>Cachés</span><span class="val-data" id="perf-cache">-</span></div>
+                    <div class="data-row perf-hide"><span>FPU</span><span class="val-data" id="perf-fpu">-</span></div>
+                    <div class="data-row perf-hide"><span>Módulos H723</span><span class="val-data" id="perf-mod">-</span></div>
+                </div>
+
                 <!-- VISUALIZACIÓN CON BOTÓN HOME AÑADIDO -->
                 <div class="widget" style="background: transparent; border: none; padding: 0; margin-top: 8px;">
                     <div class="widget-title" style="padding-left: 4px;">VISUALIZACIÓN</div>
                     <label class="sidebar-toggle">
-                        <input type="checkbox"> Ver G0 (rapidos)
+                        <input type="checkbox" checked> Ver G0 (rapidos)
                     </label>
                     <label class="sidebar-toggle">
                         <input type="checkbox" checked> Ver G1 (cortes)
                     </label>
 
-                    <button class="tool-btn" style="width: 100%; margin-top: 8px; padding: 8px; display: flex; justify-content: center; align-items: center; gap: 6px;" onclick="resetViewer()">
+                    <button class="tool-btn home-view-btn" style="width: 100%; margin-top: 8px; padding: 8px; display: flex; justify-content: center; align-items: center; gap: 6px;" onclick="resetViewer()">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                         Home
                     </button>
@@ -1963,7 +2111,7 @@
                     if (history.length > monitorConfig.historyMax) history.splice(0, history.length - monitorConfig.historyMax);
                 });
             }
-            document.querySelectorAll('.motor-window:not(.editor-window)').forEach(win => {
+            document.querySelectorAll('.motor-window:not(.editor-window):not(.servo-window)').forEach(win => {
                 const axis = win.dataset.motor || 'X';
                 const value = stats?.[axis] || { count: 0, rate: 0 };
                 const count = win.querySelector('.pulse-count');
@@ -2011,7 +2159,7 @@
         }
 
         function refreshAllMotorWindows() {
-            document.querySelectorAll('.motor-window:not(.editor-window)').forEach(win => {
+            document.querySelectorAll('.motor-window:not(.editor-window):not(.servo-window)').forEach(win => {
                 const axis = win.dataset.motor || 'X';
                 const canvas = win.querySelector('canvas');
                 if (canvas) drawGraphOnCanvas(canvas, axis);
@@ -2157,7 +2305,7 @@
         }
 
         function captureAllMotorCharts() {
-            const wins = [...document.querySelectorAll('.motor-window:not(.editor-window)')]
+            const wins = [...document.querySelectorAll('.motor-window:not(.editor-window):not(.servo-window)')]
                 .filter(w => (w.dataset.motor || 'X') !== 'Z');
             if (!wins.length) { addLog('> Monitor: abre una ventana de motor para capturar', ''); return; }
             wins.forEach(captureMotorChart);
@@ -2243,6 +2391,7 @@
                     </aside>
                     <section class="monitor-ed-main">
                         <div class="monitor-ed-toolbar">
+                            <button class="motor-action" data-ed="toggle-caps" title="Mostrar u ocultar capturas"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="vertical-align:-2px"><path d="M2 3.5h10M2 7h10M2 10.5h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg> Capturas</button>
                             <button class="motor-action active" data-ed="view-chart">Datos</button>
                             <button class="motor-action" data-ed="view-img">Imagen</button>
                             <button class="motor-action" data-ed="zoom-in">Zoom +</button>
@@ -2343,6 +2492,7 @@
                 'copy-uri': monEdCopyDataUri,
                 'apps-refresh': monEdLoadApps,
                 'open-capture': () => monEdOpenWith(monEd.pngPath),
+                'toggle-caps': () => monEdToggleCaps(),
                 'open-export': () => monEdOpenWith(monEd.lastExport),
                 'reveal-lib': () => monEdReveal(''),
                 'reveal-export': () => (monEd.lastExport ? monEdReveal(monEd.lastExport) : monEdNone('todavia no hay exportacion'))
@@ -2407,6 +2557,7 @@
             }, { passive: false });
 
             monEd.win = win;
+            monEdApplyCaps(monEdCapsSaved());
             windowsLayer.appendChild(win);
             activeWindow = win;
             monEd.resizeObs = new ResizeObserver(() => monEdDraw());
@@ -2447,6 +2598,24 @@
             });
             bar.addEventListener('pointerup', () => { drag = null; win.classList.remove('dragging'); });
             bar.addEventListener('pointercancel', () => { drag = null; win.classList.remove('dragging'); });
+        }
+
+        const MON_CAPS_KEY = 'monEdCapsHidden';
+        function monEdCapsSaved() {
+            try { return localStorage.getItem(MON_CAPS_KEY) === '1'; } catch (_) { return false; }
+        }
+        function monEdApplyCaps(hidden) {
+            if (!monEd.win) return;
+            const body = monEd.win.querySelector('.monitor-ed-body');
+            const btn = monEd.win.querySelector('[data-ed="toggle-caps"]');
+            if (body) body.classList.toggle('caps-hidden', !!hidden);
+            if (btn) btn.classList.toggle('active', !!hidden);
+        }
+        function monEdToggleCaps() {
+            const hidden = !monEdCapsSaved();
+            try { localStorage.setItem(MON_CAPS_KEY, hidden ? '1' : '0'); } catch (_) {}
+            monEdApplyCaps(hidden);
+            monEdDraw();
         }
 
         function monEdRefreshList() {
@@ -2964,6 +3133,7 @@
         let historyWin = null;
         let historyOnlyErrors = false;
         let historyFilter = 'all';
+        let historySource = '';
 
         function openHistoryWindow() {
             if (historyWin && document.body.contains(historyWin)) {
@@ -2994,6 +3164,7 @@
                 </div>
                 <div class="history-body">
                     <div class="history-toolbar">
+                        <select class="history-source" aria-label="Fuente del historial"></select>
                         <button class="motor-action" data-h="refresh">Actualizar</button>
                         <button class="motor-action active" data-h="f-all">Todas</button>
                         <button class="motor-action" data-h="f-err">Solo errores</button>
@@ -3023,11 +3194,15 @@
                 if (!e.target.closest('.tl')) win.querySelector('.tl-max').click();
             });
             monEdDragable(win);
+            win.querySelector('.history-source').addEventListener('change', e => {
+                historySource = e.target.value;
+                refreshHistory();
+            });
             win.addEventListener('click', e => {
                 const b = e.target.closest('[data-h]');
                 if (!b) return;
                 const act = b.dataset.h;
-                if (act === 'refresh') refreshHistory();
+                if (act === 'refresh') { historyPopulateSources(); refreshHistory(); }
                 else if (act.indexOf('f-') === 0) {
                     historyFilter = act.slice(2);
                     win.querySelectorAll('[data-h^="f-"]').forEach(x => x.classList.toggle('active', x === b));
@@ -3042,7 +3217,23 @@
             historyWin = win;
             windowsLayer.appendChild(win);
             activeWindow = win;
+            historyPopulateSources();
             refreshHistory();
+        }
+
+        function historyPopulateSources() {
+            const api = window.cncApi;
+            if (!historyWin || !api || !api.listHistorySources) return;
+            api.listHistorySources(list => {
+                if (!historyWin) return;
+                const sel = historyWin.querySelector('.history-source');
+                const items = list || [];
+                if (!historySource && items.length) historySource = items[0].id;
+                sel.innerHTML = items.length
+                    ? items.map(it => '<option value="' + monEdEsc(it.id) + '">' + monEdEsc(it.label) + '</option>').join('')
+                    : '<option value="">Sin historial ni trabajos</option>';
+                sel.value = historySource;
+            });
         }
 
         function refreshHistory() {
@@ -3051,7 +3242,7 @@
             const meta = historyWin.querySelector('.history-meta');
             const pre = historyWin.querySelector('.history-log');
             if (!api) { meta.textContent = 'bridge no disponible'; return; }
-            api.readHistory(res => {
+            api.readHistorySource(historySource || '', res => {
                 if (!historyWin) return;
                 if (!res || !res.ok) { meta.textContent = 'error al leer el historial'; return; }
                 let rows = res.lines || [];
@@ -3060,7 +3251,7 @@
                 const HIST_MAX = 400;
                 const shown = rows.slice(-HIST_MAX);
                 meta.textContent = (res.file ? res.file : 'sin archivo esta semana') + ' · ' + rows.length + ' de ' + total + ' lineas (ultimas ' + shown.length + ')';
-                const key = historyFilter + '|' + rows.length + '|' + (rows[rows.length - 1] || '');
+                const key = historySource + '|' + historyFilter + '|' + rows.length + '|' + (rows[rows.length - 1] || '');
                 if (historyWin._lastKey === key) return;
                 historyWin._lastKey = key;
                 rows = shown;
@@ -3072,6 +3263,210 @@
                 }).join('\n');
                 pre.scrollTop = pre.scrollHeight;
             });
+        }
+
+        /* ===== MONITOR SERVO (SG90, M280) =====
+         * El firmware no envia estado del servo: el monitor muestra el ultimo
+         * angulo comandado con M280 (no medido; el SG90 no tiene realimentacion). */
+        const SERVO_LIMIT_SAMPLES = 300;
+        const SERVO_WINDOW_MS = 60000;
+        const servoHistory = [];
+        let servoTimer = null;
+
+        function servoPulseFromAngle(angle) { return 500 + angle * 1900 / 180; }
+
+        let servoPenDown = null;
+        /* Lee las lineas de la consola del firmware: SERVO:<deg>, SERVO_PULSE:<us>, PEN:UP/DOWN.
+         * Cuenta tanto los M280 escritos a mano como los cambios de plumon del trabajo. */
+        function servoFromFirmwareLine(line) {
+            const t = String(line);
+            let m = /SERVO:(-?\d+(?:\.\d+)?)/.exec(t);
+            let angle = null, pulse = null;
+            if (m) { angle = Number(m[1]); pulse = servoPulseFromAngle(angle); }
+            else if ((m = /SERVO_PULSE:(\d+)/.exec(t))) { pulse = Number(m[1]); angle = (pulse - 500) * 180 / 1900; }
+            else if ((m = /PEN:(UP|DOWN)/.exec(t))) { servoPenDown = m[1] === 'DOWN'; refreshServoWindows(); return; }
+            else return;
+            const inRange = angle >= 0 && angle <= 180 && pulse >= 500 && pulse <= 2500;
+            servoHistory.push({ t: performance.now(), angle, pulse, cmd: t.trim(), inRange });
+            if (servoHistory.length > SERVO_LIMIT_SAMPLES) servoHistory.splice(0, servoHistory.length - SERVO_LIMIT_SAMPLES);
+            refreshServoWindows();
+        }
+        window.onServoLine = servoFromFirmwareLine;
+
+        function recordServoCommand(cmd) {
+            const m = /^\s*M280\b(.*)$/i.exec(cmd);
+            if (!m) return;
+            const args = m[1].toUpperCase();
+            const num = (letter) => {
+                const r = new RegExp(letter + '\\s*(-?\\d+(?:\\.\\d+)?)').exec(args);
+                return r ? Number(r[1]) : null;
+            };
+            const u = num('U'), s = num('S');
+            let angle = null, pulse = null;
+            if (u !== null) { pulse = u; angle = (u - 500) * 180 / 1900; }
+            else if (s !== null) { angle = s; pulse = servoPulseFromAngle(s); }
+            else return;
+            const inRange = angle >= 0 && angle <= 180 && pulse >= 500 && pulse <= 2500;
+            servoHistory.push({ t: performance.now(), angle, pulse, cmd: cmd.trim(), inRange });
+            if (servoHistory.length > SERVO_LIMIT_SAMPLES) servoHistory.splice(0, servoHistory.length - SERVO_LIMIT_SAMPLES);
+            refreshServoWindows();
+        }
+
+        function drawServoChart(canvas) {
+            if (!canvas) return;
+            const container = canvas.parentElement;
+            const w = container ? container.clientWidth : canvas.clientWidth;
+            const h = container ? container.clientHeight : canvas.clientHeight;
+            if (w <= 0 || h <= 0) return;
+            const dpr = window.devicePixelRatio || 1;
+            const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+            if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(canvas.width / w, 0, 0, canvas.height / h, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            const theme = document.getElementById('app').getAttribute('data-theme');
+            const isDark = theme !== 'white' && theme !== 'text';
+            const grid = isDark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.12)';
+            const text = isDark ? 'rgba(255,255,255,.66)' : 'rgba(0,0,0,.62)';
+            const color = '#0A84FF';
+            const left = 58, right = w - 14, top = 27, bottom = h - 34;
+            const plotW = Math.max(1, right - left), plotH = Math.max(1, bottom - top);
+            const tMin = performance.now() - SERVO_WINDOW_MS;
+            const xOf = t => left + plotW * Math.min(1, Math.max(0, (t - tMin) / SERVO_WINDOW_MS));
+            const yOf = a => bottom - plotH * Math.min(180, Math.max(0, a)) / 180;
+
+            ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'right';
+            for (const a of [0, 45, 90, 135, 180]) {
+                const y = yOf(a);
+                ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y);
+                ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.stroke();
+                ctx.fillStyle = text; ctx.fillText(a + '°', left - 7, y);
+            }
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'alphabetic';
+            for (let i = 0; i <= 4; i++) {
+                const x = left + plotW * i / 4;
+                ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom);
+                ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.stroke();
+                const secs = 60 * (1 - i / 4);
+                ctx.fillStyle = text;
+                ctx.fillText(i === 4 ? '0 s' : '-' + Math.round(secs) + ' s', x, bottom + 17);
+            }
+            ctx.textAlign = 'left';
+            const last = servoHistory[servoHistory.length - 1];
+            ctx.fillStyle = text;
+            ctx.fillText('Servo · ' + (last ? last.angle.toFixed(0) : '--') + '°   ' + (last ? Math.round(last.pulse) : '--') + ' µs', left, 15);
+
+            if (servoHistory.length) {
+                ctx.beginPath();
+                let prev = null;
+                for (const p of servoHistory) {
+                    const x = xOf(p.t), y = yOf(p.angle);
+                    if (!prev) ctx.moveTo(x, y);
+                    else { ctx.lineTo(x, yOf(prev.angle)); ctx.lineTo(x, y); }
+                    prev = p;
+                }
+                ctx.lineTo(right, yOf(prev.angle));
+                ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+                ctx.stroke();
+                ctx.fillStyle = color;
+                for (const p of servoHistory) {
+                    ctx.beginPath(); ctx.arc(xOf(p.t), yOf(p.angle), 3, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+        }
+
+        function refreshServoWindows() {
+            const wins = document.querySelectorAll('.servo-window');
+            if (!wins.length) {
+                if (servoTimer) { clearInterval(servoTimer); servoTimer = null; }
+                return;
+            }
+            const last = servoHistory[servoHistory.length - 1];
+            const list = servoHistory.slice(-6).reverse().map(p =>
+                '<div>' + monEdEsc(p.cmd) + ' → ' + p.angle.toFixed(1) + '° · ' + Math.round(p.pulse) + ' µs' +
+                (p.inRange ? '' : ' · FUERA DE RANGO') + '</div>').join('');
+            const penTxt = servoPenDown === null ? 'desconocido' : (servoPenDown ? 'abajo' : 'arriba');
+            wins.forEach(win => {
+                const a = win.querySelector('.servo-angle');
+                const pu = win.querySelector('.servo-pulse');
+                const co = win.querySelector('.servo-count');
+                const sm = win.querySelector('.servo-samples');
+                if (a) a.textContent = last ? 'Ángulo: ' + last.angle.toFixed(1) + '°' : 'Ángulo: --';
+                if (pu) pu.textContent = last ? Math.round(last.pulse) + ' µs' : '-- µs';
+                if (co) co.textContent = servoHistory.length + ' comandos';
+                const key = servoHistory.length + ':' + (last ? last.t : 0) + ':' + servoPenDown;
+                if (sm && sm.dataset.key !== key) { sm.dataset.key = key; sm.innerHTML = '<div>Plumón: ' + penTxt + '</div>' + (list || 'Sin comandos M280 todavía'); }
+                const c = win.querySelector('canvas');
+                if (c) drawServoChart(c);
+            });
+        }
+
+        function exportServoCsv() {
+            if (!servoHistory.length) { addLog('> Servo: sin datos para exportar'); return; }
+            const rows = ['t_ms,angulo_deg,pulso_us,comando,en_rango'].concat(servoHistory.map(p =>
+                [Math.round(p.t), p.angle.toFixed(2), Math.round(p.pulse), '"' + p.cmd.replace(/"/g, '""') + '"', p.inRange ? 1 : 0].join(',')));
+            const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'servo-' + monitorStamp() + '.csv';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        function openServoWindow() {
+            const existing = document.querySelector('.servo-window');
+            if (existing) { existing.style.zIndex = ++zCounter; activeWindow = existing; return; }
+            windowCounter++;
+            zCounter++;
+            const win = document.createElement('div');
+            win.className = 'motor-window servo-window glass';
+            const offsetIdx = (windowCounter - 1) % 6;
+            win.style.left = (110 + offsetIdx * 30) + 'px';
+            win.style.top = (110 + offsetIdx * 30) + 'px';
+            win.style.width = '500px';
+            win.style.height = '340px';
+            win.style.zIndex = zCounter;
+            win.innerHTML = `
+                <div class="motor-titlebar">
+                    <div class="traffic-lights">
+                        <button class="tl tl-close" aria-label="Cerrar"></button>
+                        <button class="tl tl-min" aria-label="Minimizar"></button>
+                        <button class="tl tl-max" aria-label="Maximizar"></button>
+                    </div>
+                    <div class="motor-tabs"><span class="motor-tab active">Servo SG90 · PA5</span></div>
+                    <div class="tl-spacer"></div>
+                </div>
+                <div class="motor-body">
+                    <div class="motor-live-stats">
+                        <span class="servo-angle">Ángulo: --</span>
+                        <strong class="servo-pulse">-- µs</strong>
+                        <span class="servo-count">0 comandos</span>
+                    </div>
+                    <div class="motor-live-caption">Ángulo comandado con M280 (no medido: el SG90 no tiene realimentación) · últimos 60 s</div>
+                    <div class="motor-toolbar">
+                        <button class="motor-action" data-act="csv">CSV</button>
+                        <button class="motor-action" data-act="clear">Limpiar</button>
+                    </div>
+                    <div class="motor-analysis servo-samples"></div>
+                    <div class="chart-container"><canvas></canvas></div>
+                </div>
+            `;
+            win.querySelectorAll('.motor-action').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    if (btn.dataset.act === 'csv') exportServoCsv();
+                    else if (btn.dataset.act === 'clear') { servoHistory.length = 0; refreshServoWindows(); }
+                });
+            });
+            windowsLayer.appendChild(win);
+            wireFloatingWindow(win);
+            if (!servoTimer) servoTimer = setInterval(refreshServoWindows, 500);
+            refreshServoWindows();
+            requestAnimationFrame(() => resizeCanvas(win));
         }
 
         function resizeCanvas(win) {
@@ -3088,7 +3483,8 @@
                     canvas.width = pixelWidth;
                     canvas.height = pixelHeight;
                 }
-                drawGraphOnCanvas(canvas, win.dataset.motor || 'X');
+                if (win.classList.contains('servo-window')) drawServoChart(canvas);
+                else drawGraphOnCanvas(canvas, win.dataset.motor || 'X');
             }
         }
 
@@ -3126,6 +3522,98 @@
             setTimeout(() => resizeCanvas(win), 460);
         }
 
+        /* ===== Editor G-code avanzado: resaltado, ajustes y temas ===== */
+        const GC_STORAGE_KEY = 'cnc.gcodeEditor.v1';
+        const GC_FONTS = {
+            'mono-sys': { name: 'Sistema (SF Mono / Menlo)', css: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' },
+            'jetbrains': { name: 'JetBrains Mono', css: '"JetBrains Mono", ui-monospace, monospace' },
+            'fira': { name: 'Fira Code', css: '"Fira Code", ui-monospace, monospace' },
+            'cascadia': { name: 'Cascadia Code', css: '"Cascadia Code", ui-monospace, monospace' },
+            'courier': { name: 'Courier New', css: '"Courier New", Courier, monospace' }
+        };
+        const GC_PRESETS = {
+            xcode: { name: 'Xcode oscuro', bgAlpha: 0.55, colors: { bg: '#1e1e1e', fg: '#d4d4d4', comment: '#6a9955', g: '#569cd6', m: '#c586c0', t: '#4ec9b0', f: '#dcdcaa', s: '#ce9178', n: '#808080', axis: '#9cdcfe', num: '#b5cea8', lineno: '#6e7681', cur: '#ffffff' } },
+            monokai: { name: 'Monokai', bgAlpha: 0.6, colors: { bg: '#272822', fg: '#f8f8f2', comment: '#75715e', g: '#66d9ef', m: '#f92672', t: '#ae81ff', f: '#e6db74', s: '#fd971f', n: '#90908a', axis: '#a6e22e', num: '#ae81ff', lineno: '#90908a', cur: '#ffffff' } },
+            solarized: { name: 'Solarized oscuro', bgAlpha: 0.6, colors: { bg: '#002b36', fg: '#93a1a1', comment: '#586e75', g: '#268bd2', m: '#d33682', t: '#2aa198', f: '#b58900', s: '#cb4b16', n: '#586e75', axis: '#839496', num: '#2aa198', lineno: '#586e75', cur: '#ffffff' } },
+            apple: { name: 'Apple claro', bgAlpha: 0.55, colors: { bg: '#ffffff', fg: '#1d1d1f', comment: '#8e8e93', g: '#0a64d6', m: '#af52de', t: '#248a3d', f: '#c93400', s: '#b25000', n: '#8e8e93', axis: '#1d1d1f', num: '#1c7ea8', lineno: '#8e8e93', cur: '#000000' } }
+        };
+        const GC_COLOR_KEYS = [
+            ['fg', 'Texto'], ['comment', 'Comentarios'], ['g', 'Comandos G'], ['m', 'Comandos M'],
+            ['t', 'Herramienta T'], ['f', 'Avance F'], ['s', 'Velocidad S'], ['n', 'Palabra N'],
+            ['axis', 'Ejes (X Y Z…)'], ['num', 'Números'], ['lineno', 'Números de línea'], ['cur', 'Línea actual'], ['bg', 'Fondo']
+        ];
+        const GC_DEFAULTS = {
+            theme: 'xcode', bgAlpha: 0.55, colors: Object.assign({}, GC_PRESETS.xcode.colors),
+            font: 'mono-sys', size: 12, lh: 1.55, tab: 4, lineNumbers: true, wrap: false, curLine: true, autoIndent: true
+        };
+        let gcSettings = null;
+
+        const GC_FILES_KEY = 'cnc.gcodeFilesHidden';
+        let gcOpenFile = { name: '', saved: '' };
+        let gcFileItems = [];
+
+        function gcLoadSettings() {
+            if (gcSettings) return gcSettings;
+            let saved = {};
+            try { saved = JSON.parse(localStorage.getItem(GC_STORAGE_KEY) || '{}') || {}; } catch (_) { saved = {}; }
+            gcSettings = Object.assign({}, GC_DEFAULTS, saved, { colors: Object.assign({}, GC_DEFAULTS.colors, saved.colors || {}) });
+            return gcSettings;
+        }
+        function gcSaveSettings() { try { localStorage.setItem(GC_STORAGE_KEY, JSON.stringify(gcSettings)); } catch (_) {} }
+        function gcRgba(hex, a) {
+            const n = parseInt(String(hex).slice(1), 16);
+            return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+        }
+        function gcEscape(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+        // Grupos: 1 comentario · 2 letra de palabra · 3 valor de la palabra · 4 número suelto · 5 otro carácter
+        const GC_TOKEN_RE = /(\([^)]*\)?|;.*|%.*)|([A-Za-z])((?:[+-]?(?:\d+\.?\d*|\.\d+))?)|([+-]?(?:\d+\.?\d*|\.\d+))|([\s\S])/g;
+        function gcHighlightLine(line) {
+            const letterClass = { G: 'gc-g', M: 'gc-m', T: 'gc-t', F: 'gc-f', S: 'gc-s', N: 'gc-n' };
+            return line.replace(GC_TOKEN_RE, (m, com, letter, value, plain, other) => {
+                if (com !== undefined) return `<span class="gc-c">${gcEscape(m)}</span>`;
+                if (letter !== undefined) return `<span class="${letterClass[letter.toUpperCase()] || 'gc-axis'}">${gcEscape(m)}</span>`;
+                if (plain !== undefined) return `<span class="gc-num">${m}</span>`;
+                return gcEscape(other);
+            });
+        }
+        function gcHighlight(text) {
+            const html = text.split('\n').map(gcHighlightLine).join('\n');
+            return text.endsWith('\n') ? html + ' ' : html;
+        }
+
+        function gcSettingsHTML(s) {
+            const themeOpts = Object.keys(GC_PRESETS).map(k => `<option value="${k}" ${s.theme === k ? 'selected' : ''}>${GC_PRESETS[k].name}</option>`).join('')
+                + `<option value="custom" ${s.theme === 'custom' ? 'selected' : ''}>Personalizado</option>`;
+            const fontOpts = Object.keys(GC_FONTS).map(k => `<option value="${k}" ${s.font === k ? 'selected' : ''}>${GC_FONTS[k].name}</option>`).join('');
+            const tabOpts = [2, 4, 8].map(n => `<option value="${n}" ${s.tab === n ? 'selected' : ''}>${n} espacios</option>`).join('');
+            const colors = GC_COLOR_KEYS.map(([k, label]) => `<div class="gc-row"><span>${label}</span><input type="color" data-gc="color-${k}" value="${s.colors[k]}"></div>`).join('');
+            const chk = (k, label) => `<label class="gc-row"><span>${label}</span><input type="checkbox" data-gc="chk-${k}" ${s[k] ? 'checked' : ''}></label>`;
+            return `
+                <div class="gc-set-title">Tema</div>
+                <div class="gc-row"><span>Esquema</span><select data-gc="theme">${themeOpts}</select></div>
+                <div class="gc-set-title">Colores</div>
+                ${colors}
+                <div class="gc-row"><span data-gc-label="alpha">Opacidad del fondo (${Math.round(s.bgAlpha * 100)}%)</span><input type="range" min="0" max="100" step="1" data-gc="alpha" value="${Math.round(s.bgAlpha * 100)}"></div>
+                <div class="gc-set-title">Tipografía</div>
+                <div class="gc-row"><span>Fuente</span><select data-gc="font">${fontOpts}</select></div>
+                <div class="gc-row"><span data-gc-label="size">Tamaño (${s.size}px)</span><input type="range" min="9" max="20" step="1" data-gc="size" value="${s.size}"></div>
+                <div class="gc-row"><span data-gc-label="lh">Interlineado (${s.lh.toFixed(2)})</span><input type="range" min="1.2" max="2.2" step="0.05" data-gc="lh" value="${s.lh}"></div>
+                <div class="gc-row"><span>Tabulación</span><select data-gc="tab">${tabOpts}</select></div>
+                <div class="gc-set-title">Edición</div>
+                ${chk('lineNumbers', 'Números de línea (solo sin ajuste)')}
+                ${chk('wrap', 'Ajuste de línea')}
+                ${chk('curLine', 'Resaltar línea actual (solo sin ajuste)')}
+                ${chk('autoIndent', 'Sangría automática')}
+                <div class="gc-row" style="margin-top:12px"><button class="btn-term" data-gc="reset">Restablecer</button></div>`;
+        }
+
+        // Inserta texto respetando el historial de la textarea y avisa a los listeners (resaltado, borrador)
+        function gcReplace(ta, text, from, to) {
+            ta.setRangeText(text, from, to, 'end');
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
         function openEditorWindow() {
             const existing = document.querySelector('.editor-window');
             if (existing) { existing.style.zIndex = ++zCounter; activeWindow = existing; return existing; }
@@ -3136,6 +3624,7 @@
             win.style.left = (110 + offset * 28) + 'px';
             win.style.top = (65 + offset * 24) + 'px';
             win.style.zIndex = ++zCounter;
+            const s = gcLoadSettings();
             win.innerHTML = `
                 <div class="motor-titlebar">
                     <div class="traffic-lights">
@@ -3148,6 +3637,8 @@
                 </div>
                 <div class="motor-body">
                     <div class="editor-toolbar">
+                        <button class="btn-term gc-icon-btn" data-editor-action="settings" aria-expanded="false" title="Ajustes del editor" aria-label="Ajustes del editor"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+                        <button class="btn-term gc-icon-btn" data-editor-action="files" aria-expanded="true" title="Mostrar u ocultar archivos (Ctrl/Cmd+B)" aria-label="Mostrar u ocultar archivos"><svg width="15" height="15" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 3.5h10M2 7h10M2 10.5h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg></button>
                         <button class="btn-term" data-editor-action="copy">Copiar</button>
                         <button class="btn-term" data-editor-action="paste">Pegar</button>
                         <button class="btn-term" data-editor-action="select">Seleccionar todo</button>
@@ -3155,13 +3646,237 @@
                         <button class="btn-term" data-editor-action="save">Guardar G-code</button>
                         <span class="editor-hint">Ctrl/Cmd+C · V · X · Z · Y · A</span>
                     </div>
-                    <textarea class="gcode-editor" spellcheck="false" aria-label="Editor de G-code" placeholder="Escribe o pega aquí el G-code…"></textarea>
+                    <div class="gc-body">
+                        <aside class="gc-files">
+                            <div class="gc-files-head">
+                                <span class="gc-files-title">Sin archivo</span>
+                                <button class="mini-btn" data-gc-act="new" title="Crear archivo nuevo">+ Nuevo</button>
+                                <button class="mini-btn" data-gc-act="save-lib" title="Guardar en la biblioteca">Guardar</button>
+                            </div>
+                            <div class="gc-file-items"></div>
+                        </aside>
+                    <div class="gc-wrap">
+                        <div class="gc-gutter" aria-hidden="true"></div>
+                        <div class="gc-cur" aria-hidden="true"></div>
+                        <pre class="gc-layer gc-hl" aria-hidden="true"></pre>
+                        <textarea class="gc-layer gcode-editor" spellcheck="false" aria-label="Editor de G-code" placeholder="Escribe o pega aquí el G-code…"></textarea>
+                        <div class="gc-settings" role="dialog" aria-label="Ajustes del editor"></div>
+                    </div>
+                    </div>
                 </div>`;
             windowsLayer.appendChild(win);
             activeWindow = win;
+
+            const wrap = win.querySelector('.gc-wrap');
             const editor = win.querySelector('.gcode-editor');
-            editor.value = editorDraft;
-            editor.addEventListener('input', () => { editorDraft = editor.value; });
+            const pre = win.querySelector('.gc-hl');
+            const gutter = win.querySelector('.gc-gutter');
+            const curEl = win.querySelector('.gc-cur');
+            const panel = win.querySelector('.gc-settings');
+            const settingsBtn = win.querySelector('[data-editor-action="settings"]');
+            let rafId = 0, gutterCount = -1;
+
+            // ---- Biblioteca de archivos G-code (lista lateral) ----
+            const gcBody = win.querySelector('.gc-body');
+            const filesBtn = win.querySelector('[data-editor-action="files"]');
+            const fileItems = win.querySelector('.gc-file-items');
+            const fileTitle = win.querySelector('.gc-files-title');
+            const gcApi = () => window.cncApi || null;
+            const gcNoteUi = msg => addLog(`> Editor G-code: ${msg}`, '');
+            const gcIsDirty = () => gcOpenFile.name ? editor.value !== gcOpenFile.saved : editor.value.trim() !== '';
+            const confirmDiscard = () => !gcIsDirty() || window.confirm('Hay cambios sin guardar en el editor. ¿Descartarlos?');
+            const updateHeader = () => {
+                fileTitle.textContent = (gcOpenFile.name || 'Sin archivo') + (gcIsDirty() ? ' •' : '');
+                fileTitle.title = gcOpenFile.name || '';
+            };
+            const renderFileList = () => {
+                fileItems.innerHTML = gcFileItems.length
+                    ? gcFileItems.map(it => `<div class="gc-file-item ${it.name === gcOpenFile.name ? 'active' : ''}" data-name="${gcEscape(it.name)}" title="${gcEscape(it.name)}"><strong>${gcEscape(it.name)}</strong><span>${it.size} B · ${gcEscape(it.modified || '')}</span><button class="gc-file-del" data-del="${gcEscape(it.name)}" title="Eliminar archivo" aria-label="Eliminar">×</button></div>`).join('')
+                    : '<div class="motor-an-note">Sin archivos. Usa “+ Nuevo” o guarda el editor.</div>';
+            };
+            const refreshFiles = () => {
+                const api = gcApi(); if (!api) return;
+                api.listGcodeFiles(items => { gcFileItems = items || []; renderFileList(); });
+            };
+            const setEditorText = (text, name, saved) => {
+                editor.value = text;
+                gcOpenFile = { name, saved };
+                editor.dispatchEvent(new Event('input', { bubbles: true }));
+                updateHeader();
+                renderFileList();
+            };
+            const writeFile = (name, text, overwrite, done) => {
+                const api = gcApi(); if (!api) return gcNoteUi('bridge no disponible');
+                api.writeGcodeFile(name, text, overwrite, res => {
+                    if (res && res.exists && !overwrite) {
+                        if (window.confirm(`Ya existe "${name}". ¿Sobrescribirlo?`)) writeFile(name, text, true, done);
+                        return;
+                    }
+                    if (!res || !res.ok) return gcNoteUi(`no se pudo guardar: ${(res && res.error) || 'error'}`);
+                    done(res.name);
+                });
+            };
+            const openLibraryFile = name => {
+                if (!confirmDiscard()) return;
+                const api = gcApi(); if (!api) return gcNoteUi('bridge no disponible');
+                api.readGcodeFile(name, data => {
+                    if (!data || !data.ok) return gcNoteUi(`no se pudo abrir ${name}`);
+                    setEditorText(data.text || '', data.name, data.text || '');
+                    addLog(`> Editor G-code: abierto ${data.name}`, 'success');
+                });
+            };
+            const newLibraryFile = () => {
+                if (!confirmDiscard()) return;
+                const raw = window.prompt('Nombre del nuevo archivo G-code:', 'programa.gcode');
+                if (!raw || !raw.trim()) return;
+                writeFile(raw.trim(), '', false, name => {
+                    setEditorText('', name, '');
+                    refreshFiles();
+                    addLog(`> Editor G-code: creado ${name}`, 'success');
+                });
+            };
+            const saveLibraryFile = () => {
+                const text = editor.value;
+                const finish = name => {
+                    gcOpenFile = { name, saved: text };
+                    updateHeader();
+                    refreshFiles();
+                    addLog(`> Editor G-code: guardado ${name}`, 'success');
+                };
+                if (gcOpenFile.name) return writeFile(gcOpenFile.name, text, true, finish);
+                const raw = window.prompt('Guardar como (nombre del archivo):', 'programa.gcode');
+                if (!raw || !raw.trim()) return;
+                writeFile(raw.trim(), text, false, finish);
+            };
+            const deleteLibraryFile = name => {
+                if (!window.confirm(`¿Eliminar "${name}" de la biblioteca? No se puede deshacer.`)) return;
+                const api = gcApi(); if (!api) return;
+                api.deleteGcodeFile(name, ok => {
+                    if (gcOpenFile.name === name) gcOpenFile = { name: '', saved: '' };
+                    updateHeader();
+                    refreshFiles();
+                    addLog(`> Editor G-code: ${ok ? 'eliminado' : 'no se pudo eliminar'} ${name}`, ok ? 'success' : '');
+                });
+            };
+            const applyFilesVisibility = hidden => {
+                gcBody.classList.toggle('files-hidden', !!hidden);
+                filesBtn.classList.toggle('active', !hidden);
+            };
+            const toggleFiles = () => {
+                const hidden = !gcBody.classList.contains('files-hidden');
+                try { localStorage.setItem(GC_FILES_KEY, hidden ? '1' : '0'); } catch (_) {}
+                applyFilesVisibility(hidden);
+            };
+            filesBtn.onclick = toggleFiles;
+            win.querySelector('[data-gc-act="new"]').onclick = newLibraryFile;
+            win.querySelector('[data-gc-act="save-lib"]').onclick = saveLibraryFile;
+            fileItems.addEventListener('click', e => {
+                const del = e.target.closest('[data-del]');
+                if (del) { e.stopPropagation(); deleteLibraryFile(del.dataset.del); return; }
+                const item = e.target.closest('.gc-file-item');
+                if (item) openLibraryFile(item.dataset.name);
+            });
+
+            const updateCursor = () => {
+                if (!s.curLine || s.wrap) { curEl.classList.remove('on'); return; }
+                const lh = parseFloat(getComputedStyle(editor).lineHeight) || 18;
+                const line = editor.value.slice(0, editor.selectionStart).split('\n').length - 1;
+                curEl.style.top = (10 + line * lh - editor.scrollTop) + 'px';
+                curEl.classList.add('on');
+            };
+            const syncScroll = () => {
+                pre.scrollTop = editor.scrollTop;
+                pre.scrollLeft = editor.scrollLeft;
+                gutter.scrollTop = editor.scrollTop;
+                updateCursor();
+            };
+            const render = () => {
+                rafId = 0;
+                const text = editor.value;
+                pre.innerHTML = gcHighlight(text);
+                if (s.lineNumbers && !s.wrap) {
+                    const n = text.split('\n').length;
+                    if (n !== gutterCount) {
+                        gutterCount = n;
+                        gutter.textContent = Array.from({ length: n }, (_, i) => i + 1).join('\n');
+                    }
+                }
+                syncScroll();
+            };
+            const schedule = () => { if (!rafId) rafId = requestAnimationFrame(render); };
+            const setLabel = (key, text) => { const el = panel.querySelector(`[data-gc-label="${key}"]`); if (el) el.textContent = text; };
+            const applySettings = () => {
+                const c = s.colors;
+                const set = (k, v) => wrap.style.setProperty(k, v);
+                const numbers = s.lineNumbers && !s.wrap;
+                set('--gc-font', (GC_FONTS[s.font] || GC_FONTS['mono-sys']).css);
+                set('--gc-size', s.size + 'px');
+                set('--gc-lh', (s.size * s.lh).toFixed(2) + 'px');
+                set('--gc-tab', String(s.tab));
+                set('--gc-left', numbers ? '58px' : '14px');
+                set('--gc-bg', gcRgba(c.bg, s.bgAlpha));
+                set('--gc-curbg', gcRgba(c.cur, 0.08));
+                set('--gc-sel', gcRgba(c.g, 0.35));
+                set('--gc-fg', c.fg);
+                set('--gc-caret', c.fg);
+                set('--gc-lineno', c.lineno);
+                set('--gc-lineno-bg', gcRgba(c.fg, 0.05));
+                set('--gc-c', c.comment); set('--gc-g', c.g); set('--gc-m', c.m); set('--gc-t', c.t);
+                set('--gc-f', c.f); set('--gc-s', c.s); set('--gc-n', c.n); set('--gc-axis', c.axis); set('--gc-num', c.num);
+                wrap.classList.toggle('gc-wrapmode', !!s.wrap);
+                wrap.classList.toggle('gc-nolines', !numbers);
+                gutterCount = -1;
+                gcSaveSettings();
+            };
+            const onSettingChange = e => {
+                const el = e.target, key = el.dataset && el.dataset.gc;
+                if (!key) return;
+                if (key === 'theme') {
+                    const p = GC_PRESETS[el.value];
+                    if (p) {
+                        s.colors = Object.assign({}, p.colors);
+                        s.bgAlpha = p.bgAlpha;
+                        GC_COLOR_KEYS.forEach(([k]) => { const inp = panel.querySelector(`[data-gc="color-${k}"]`); if (inp) inp.value = s.colors[k]; });
+                        const a = panel.querySelector('[data-gc="alpha"]'); if (a) a.value = Math.round(s.bgAlpha * 100);
+                    }
+                    s.theme = el.value;
+                } else if (key.startsWith('color-')) {
+                    s.colors[key.slice(6)] = el.value;
+                    s.theme = 'custom';
+                    const sel = panel.querySelector('[data-gc="theme"]'); if (sel) sel.value = 'custom';
+                } else if (key === 'alpha') s.bgAlpha = Number(el.value) / 100;
+                else if (key === 'font') s.font = el.value;
+                else if (key === 'size') s.size = Number(el.value);
+                else if (key === 'lh') s.lh = Number(el.value);
+                else if (key === 'tab') s.tab = Number(el.value);
+                else if (key.startsWith('chk-')) s[key.slice(4)] = el.checked;
+                else return;
+                setLabel('alpha', `Opacidad del fondo (${Math.round(s.bgAlpha * 100)}%)`);
+                setLabel('size', `Tamaño (${s.size}px)`);
+                setLabel('lh', `Interlineado (${s.lh.toFixed(2)})`);
+                applySettings();
+                schedule();
+            };
+
+            panel.innerHTML = gcSettingsHTML(s);
+            panel.addEventListener('input', onSettingChange);
+            panel.addEventListener('change', onSettingChange);
+            panel.addEventListener('click', e => {
+                if (!e.target.closest('[data-gc="reset"]')) return;
+                Object.assign(s, JSON.parse(JSON.stringify(GC_DEFAULTS)));
+                panel.innerHTML = gcSettingsHTML(s);
+                applySettings();
+                schedule();
+            });
+            settingsBtn.onclick = () => {
+                const open = panel.classList.toggle('open');
+                settingsBtn.setAttribute('aria-expanded', String(open));
+            };
+
+            editor.addEventListener('input', () => { editorDraft = editor.value; schedule(); updateHeader(); });
+            editor.addEventListener('scroll', syncScroll);
+            ['keyup', 'click', 'select', 'focus'].forEach(ev => editor.addEventListener(ev, updateCursor));
+
             win.querySelector('[data-editor-action="copy"]').onclick = async () => {
                 editor.focus();
                 const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd);
@@ -3176,24 +3891,63 @@
             };
             win.querySelector('[data-editor-action="paste"]').onclick = async () => {
                 editor.focus();
-                try {
-                    const clip = await navigator.clipboard.readText();
-                    const a = editor.selectionStart, b = editor.selectionEnd;
-                    editor.setRangeText(clip, a, b, 'end'); editorDraft = editor.value;
-                } catch (_) {
-                    const clip = prompt('Pega aquí el texto G-code del portapapeles:');
-                    if (clip !== null) {
-                        const a = editor.selectionStart, b = editor.selectionEnd;
-                        editor.setRangeText(clip, a, b, 'end'); editorDraft = editor.value;
-                    }
-                }
+                let clip = null;
+                try { clip = await navigator.clipboard.readText(); }
+                catch (_) { clip = prompt('Pega aquí el texto G-code del portapapeles:'); }
+                if (clip !== null && clip !== undefined) gcReplace(editor, clip, editor.selectionStart, editor.selectionEnd);
             };
             win.querySelector('[data-editor-action="select"]').onclick = () => { editor.focus(); editor.select(); };
+
             editor.addEventListener('keydown', e => {
-                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); editorDraft = editor.value; addLog('> Borrador G-code guardado en la maqueta.', 'success'); }
-                if (e.key === 'Tab') { e.preventDefault(); editor.setRangeText('    ', editor.selectionStart, editor.selectionEnd, 'end'); }
+                const mod = e.ctrlKey || e.metaKey;
+                if (mod && e.key.toLowerCase() === 's') {
+                    e.preventDefault(); editorDraft = editor.value;
+                    addLog('> Borrador G-code guardado en la maqueta.', 'success');
+                    return;
+                }
+                if (mod && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleFiles(); return; }
+                if (mod && e.key === '/') {
+                    e.preventDefault();
+                    const v = editor.value;
+                    const start = v.lastIndexOf('\n', editor.selectionStart - 1) + 1;
+                    let end = v.indexOf('\n', editor.selectionEnd);
+                    if (end === -1) end = v.length;
+                    const lines = v.slice(start, end).split('\n');
+                    const allCommented = lines.every(l => l.trim() === '' || /^\s*;/.test(l));
+                    const out = lines.map(l => allCommented
+                        ? l.replace(/^(\s*);/, '$1')
+                        : (l.trim() === '' ? l : l.replace(/^(\s*)/, '$1;'))).join('\n');
+                    editor.setRangeText(out, start, end, 'select');
+                    editor.dispatchEvent(new Event('input', { bubbles: true }));
+                    return;
+                }
+                if (e.key === 'Enter' && !mod && s.autoIndent) {
+                    e.preventDefault();
+                    const v = editor.value, pos = editor.selectionStart;
+                    const lineStart = v.lastIndexOf('\n', pos - 1) + 1;
+                    const indent = (/^[ \t]*/.exec(v.slice(lineStart, pos)) || [''])[0];
+                    gcReplace(editor, '\n' + indent, pos, editor.selectionEnd);
+                    return;
+                }
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (!e.shiftKey) { gcReplace(editor, ' '.repeat(s.tab), editor.selectionStart, editor.selectionEnd); return; }
+                    const ls = editor.value.lastIndexOf('\n', editor.selectionStart - 1) + 1;
+                    const m = /^ +/.exec(editor.value.slice(ls, ls + s.tab));
+                    if (m) { editor.setRangeText('', ls, ls + m[0].length, 'preserve'); editor.dispatchEvent(new Event('input', { bubbles: true })); }
+                }
             });
+
             wireFloatingWindow(win);
+            applySettings();
+            editor.value = editorDraft;
+            render();
+            let filesHidden = false;
+            try { filesHidden = localStorage.getItem(GC_FILES_KEY) === '1'; } catch (_) {}
+            applyFilesVisibility(filesHidden);
+            updateHeader();
+            renderFileList();
+            refreshFiles();
             editor.focus();
             return win;
         }
@@ -3234,7 +3988,12 @@
                 });
             });
             const end = e => { dragging = false; win.classList.remove('dragging'); try { bar.releasePointerCapture(e.pointerId); } catch (_) {} };
-            bar.addEventListener('pointerup', end); bar.addEventListener('pointercancel', end);
+            bar.addEventListener('pointerup', e => {
+                const outside = e.clientX < 0 || e.clientY < 0 || e.clientX > innerWidth || e.clientY > innerHeight;
+                if (dragging && outside && win.classList.contains('editor-window') && window.detachEditorWindow?.()) { dragging = false; return; }
+                end(e);
+            });
+            bar.addEventListener('pointercancel', end);
             bar.addEventListener('dblclick', e => { if (!e.target.closest('.tl')) win.querySelector('.tl-max').click(); });
         }
 
@@ -3406,6 +4165,600 @@
         /* ============================================================
            11) LISTENERS GLOBALES
            ============================================================ */
+        /* ============================================================
+           10d) MONITOR H723: CARGA DEL MICROCONTROLADOR (PERF1 / PERF2)
+           Datos: una linea PERF1 y otra PERF2 por segundo desde el firmware.
+           ============================================================ */
+        const H723_HISTORY_MAX = 3600;
+        const H723_SECTIONS = [
+            ['poll', 'Pantallas (poll)'], ['prot', 'Protocolo'], ['usb', 'USB TX'], ['cam', 'Camara'],
+            ['plan', 'Planner'], ['cnc', 'CNC'], ['led', 'LED'], ['scr', 'Pantallas (update)']
+        ];
+        const H723_METRICS = [
+            ['cpu', 'Ocupación lazo', '%'], ['isr', 'ISR TIM6', '%'],
+            ['loopAvg', 'Lazo media', 'µs'], ['loopMax', 'Lazo máx', 'µs'],
+            ['enqAvg', 'Enqueue media', 'µs'], ['enqMax', 'Enqueue máx', 'µs'],
+            ['movAvg', 'MoveXY media', 'µs'], ['movMax', 'MoveXY máx', 'µs'],
+            ['prodMax', 'Productor máx', 'µs'],
+            ['isrAvg', 'ISR media', 'µs'], ['isrMax', 'ISR máx', 'µs'],
+            ['ur', 'Underruns (acumulado)', 'n'], ['free', 'Cola libre (de 256)', 'slots'],
+            ['trabajo', 'Trabajo CPU (sin interrupciones)', '%'], ['fuera', 'Lazo fuera de secciones', '%'],
+            ['irq', 'Interrupciones TIM6 + USB', '%'], ['usbirq', 'Interrupción USB', '%'],
+            ['actPoll', 'Activo: pantallas (poll)', '%'], ['actProt', 'Activo: protocolo', '%'],
+            ['actUsb', 'Activo: USB TX', '%'], ['actCam', 'Activo: cámara', '%'],
+            ['actPlan', 'Activo: planner', '%'], ['actCnc', 'Activo: CNC', '%'],
+            ['actLed', 'Activo: LED', '%'], ['actScr', 'Activo: pantallas (update)', '%'],
+            ['cacheI', 'Caché instrucciones (1 = on)', 'n'], ['cacheD', 'Caché datos (1 = on)', 'n'],
+            ['fpu', 'FPU habilitada (1 = sí)', 'n'], ['fpuLazy', 'FPU apilado perezoso (1 = sí)', 'n'],
+            ['mhz', 'Reloj core', 'MHz'],
+            ['tim6', 'TIM6 reloj (1 = on)', 'n'], ['spi4', 'SPI4 reloj (1 = on)', 'n'],
+            ['dma1', 'DMA1 reloj (1 = on)', 'n'], ['usb', 'USB HS reloj (1 = on)', 'n'],
+            ['gpioa', 'GPIOA reloj (1 = on)', 'n']
+        ];
+        const H723_COLORS = {
+            cpu: '#0A84FF', trabajo: '#FFD60A', isr: '#FF9F0A', loop: '#27C93F', enqAvg: '#a855f7',
+            enqMax: '#c084fc', movAvg: '#FF375F', movMax: '#ff7a9c', prod: '#64D2FF'
+        };
+        const H723_TAB_NAMES = { carga: 'Carga', tiempos: 'Tiempos', secciones: 'Secciones', tabla: 'Tabla' };
+        const h723History = [];
+        const h723Windows = new Set();
+        let h723Partial = null;
+        let h723Latest = null;
+
+        function h723OnOff(v) { return v ? 'ON' : 'OFF'; }
+
+        function h723Fmt(v, decimals = 1) {
+            return Number.isFinite(v) ? v.toFixed(decimals) : '-';
+        }
+
+        function fmtAxis(v, unit) {
+            if (unit === '%') return `${Math.round(v)} %`;
+            return v >= 1000 ? `${(v / 1000).toFixed(1)} ms` : `${Math.round(v)} µs`;
+        }
+
+        function h723Stats(series, key) {
+            const vals = series.map(x => Number(x[key])).filter(v => Number.isFinite(v));
+            if (!vals.length) return { last: 0, mean: 0, min: 0, max: 0, p95: 0 };
+            const sorted = [...vals].sort((a, b) => a - b);
+            const sum = vals.reduce((a, b) => a + b, 0);
+            return {
+                last: vals[vals.length - 1],
+                mean: sum / vals.length,
+                min: sorted[0],
+                max: sorted[sorted.length - 1],
+                p95: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
+            };
+        }
+
+        function h723Series(win) {
+            const range = Number(win?._h723Range) || 0;
+            return range > 0 ? h723History.slice(-range) : h723History.slice();
+        }
+
+        function h723RangeLabel(win) {
+            const range = Number(win?._h723Range) || 0;
+            return range > 0 ? `últimos ${range} s` : 'todo el historial';
+        }
+
+        function refreshSidebarPerf(s) {
+            const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+            const topKey = H723_SECTIONS.reduce((best, [key]) => (s.sections[key] > s.sections[best] ? key : best), H723_SECTIONS[0][0]);
+            set('perf-load', `${s.cpu} %`);
+            set('perf-isr', `${s.isr} %`);
+            set('perf-loop', `${h723Fmt(s.loopMax)} µs (media ${h723Fmt(s.loopAvg)})`);
+            set('perf-sect', `${topKey}: ${h723Fmt(s.sections[topKey])} µs`);
+            set('perf-enq', `media ${h723Fmt(s.enqAvg)} / máx ${h723Fmt(s.enqMax)} µs`);
+            set('perf-mov', `media ${h723Fmt(s.movAvg)} / máx ${h723Fmt(s.movMax)} µs`);
+            set('perf-prod', `${h723Fmt(s.prodMax)} µs`);
+            set('perf-ur', String(s.ur));
+            set('perf-free', `${s.free} / 256`);
+            set('perf-trab', `${s.trabajo} % · fuera de secciones ${s.fuera} %`);
+            set('perf-act', `poll ${s.actPoll} · prot ${s.actProt} · usb ${s.actUsb} · cam ${s.actCam} · plan ${s.actPlan} · cnc ${s.actCnc} · led ${s.actLed} · scr ${s.actScr} %`);
+            set('perf-cache', `instr ${h723OnOff(s.cacheI)} · datos ${h723OnOff(s.cacheD)}`);
+            set('perf-fpu', `${h723OnOff(s.fpu)} (apilado perezoso ${h723OnOff(s.fpuLazy)}) · core ${s.mhz} MHz`);
+            set('perf-mod', `TIM6 ${h723OnOff(s.tim6)} (HAL ${s.tim6s}) · SPI4 ${h723OnOff(s.spi4)} (HAL ${s.spi4s}) · DMA1 ${h723OnOff(s.dma1)} · USB ${h723OnOff(s.usb)} (estado ${s.usbs}) · GPIOA ${h723OnOff(s.gpioa)}`);
+        }
+
+        window.pushPerfLine = payload => {
+            if (!payload || !payload.values) return;
+            const v = payload.values;
+            const us = key => (Number(v[key]) || 0) / 1000;
+            if (payload.kind === 'PERF1') {
+                h723Partial = {
+                    cpu: Number(v.load) || 0,
+                    trabajo: Number(v.trabajo) || 0,
+                    fuera: Number(v.fuera) || 0,
+                    irq: Number(v.irq) || 0,
+                    usbirq: Number(v.usbirq) || 0,
+                    isr: Number(v.isr) || 0,
+                    loopAvg: us('loop_avg'),
+                    loopMax: us('loop_max'),
+                    sections: Object.fromEntries(H723_SECTIONS.map(([key]) => [key, us(key)]))
+                };
+                return;
+            }
+            if (payload.kind !== 'PERF2' || !h723Partial) return;
+            const p1 = h723Partial;
+            h723Partial = null;
+            const sample = {
+                t: Date.now(),
+                cpu: p1.cpu, isr: p1.isr, loopAvg: p1.loopAvg, loopMax: p1.loopMax, sections: p1.sections,
+                enqN: Number(v.enq_n) || 0, enqAvg: us('enq_avg'), enqMax: us('enq_max'),
+                movN: Number(v.mov_n) || 0, movAvg: us('mov_avg'), movMax: us('mov_max'),
+                prodMax: us('prod_max'),
+                isrN: Number(v.isr_n) || 0, isrAvg: us('isr_avg'), isrMax: us('isr_max'),
+                ur: Number(v.ur) || 0, free: Number(v.free) || 0,
+                trabajo: p1.trabajo, fuera: p1.fuera, irq: p1.irq, usbirq: p1.usbirq,
+                actPoll: Number(v.act_poll) || 0, actProt: Number(v.act_prot) || 0,
+                actUsb: Number(v.act_usb) || 0, actCam: Number(v.act_cam) || 0,
+                actPlan: Number(v.act_plan) || 0, actCnc: Number(v.act_cnc) || 0,
+                actLed: Number(v.act_led) || 0, actScr: Number(v.act_scr) || 0,
+                cacheI: Number(v.ic) || 0, cacheD: Number(v.dc) || 0,
+                fpu: Number(v.fpu) || 0, fpuLazy: Number(v.flz) || 0, mhz: Number(v.mhz) || 0,
+                tim6: Number(v.tim) || 0, tim6s: Number(v.tims) || 0,
+                spi4: Number(v.spi) || 0, spi4s: Number(v.spis) || 0,
+                dma1: Number(v.dma) || 0, usb: Number(v.usb) || 0, usbs: Number(v.usbs) || 0,
+                gpioa: Number(v.gpioa) || 0
+            };
+            h723History.push(sample);
+            if (h723History.length > H723_HISTORY_MAX) h723History.splice(0, h723History.length - H723_HISTORY_MAX);
+            h723Latest = sample;
+            refreshSidebarPerf(sample);
+            refreshH723Windows();
+        };
+
+        function drawH723Chart(canvas, series, opts = {}) {
+            const container = canvas.parentElement;
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            if (w <= 0 || h <= 0) return;
+            const dpr = window.devicePixelRatio || 1;
+            const pw = Math.round(w * dpr);
+            const ph = Math.round(h * dpr);
+            if (canvas.width !== pw || canvas.height !== ph) {
+                canvas.width = pw;
+                canvas.height = ph;
+            }
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(pw / w, 0, 0, ph / h, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            const theme = document.getElementById('app')?.getAttribute('data-theme');
+            const isDark = theme !== 'white' && theme !== 'text';
+            const grid = isDark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.12)';
+            const textColor = isDark ? 'rgba(255,255,255,.66)' : 'rgba(0,0,0,.62)';
+            const unit = opts.unit || '';
+            const n = Math.max(0, ...series.map(s => s.values.length));
+            let maxY = opts.yMax;
+            if (!maxY) {
+                const peak = Math.max(1, ...series.flatMap(s => s.values));
+                const rough = (peak * 1.15) / 4;
+                const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+                const sc = rough / mag;
+                maxY = (sc <= 1 ? 1 : sc <= 2 ? 2 : sc <= 5 ? 5 : 10) * mag * 4;
+            }
+            const left = 56, right = w - 12, top = 26, bottom = h - 22;
+            const plotW = Math.max(1, right - left), plotH = Math.max(1, bottom - top);
+
+            ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 4; i++) {
+                const val = (maxY * i) / 4;
+                const y = bottom - (plotH * i) / 4;
+                ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y);
+                ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.stroke();
+                ctx.fillStyle = textColor;
+                ctx.fillText(fmtAxis(val, unit), left - 6, y);
+            }
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'alphabetic';
+            const spanSec = Math.max(1, n - 1);
+            for (let i = 0; i <= 4; i++) {
+                const x = left + (plotW * i) / 4;
+                ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom);
+                ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.stroke();
+                const ago = Math.round(spanSec * (1 - i / 4));
+                ctx.fillStyle = textColor;
+                ctx.fillText(i === 4 ? '0 s' : `-${ago} s`, x, h - 5);
+            }
+
+            ctx.textAlign = 'left';
+            let lx = left;
+            series.forEach(s => {
+                const last = s.values.length ? s.values[s.values.length - 1] : 0;
+                const label = `${s.name} ${fmtAxis(last, unit)}`;
+                ctx.fillStyle = s.color;
+                ctx.fillText(label, lx, 15);
+                lx += ctx.measureText(label).width + 18;
+            });
+
+            series.forEach(s => {
+                if (!s.values.length) return;
+                ctx.beginPath();
+                s.values.forEach((val, i) => {
+                    const x = s.values.length === 1 ? right : left + (plotW * i) / (s.values.length - 1);
+                    const clamped = Math.min(maxY, Math.max(0, val));
+                    const y = bottom - (plotH * clamped) / maxY;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                });
+                ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+                ctx.stroke();
+            });
+        }
+
+        function h723DrawIn(root, id, series, opts) {
+            const canvas = root.querySelector(`canvas[data-h723-chart="${id}"]`);
+            if (canvas) drawH723Chart(canvas, series, opts);
+        }
+
+        function h723Table(headers, rows, pcts) {
+            const head = headers.map((h, i) => `<th${i ? ' class="num"' : ''}>${h}</th>`).join('') + (pcts ? '<th>Barra</th>' : '');
+            const body = rows.map((r, ri) => {
+                const cells = r.map((c, i) => `<td${i ? ' class="num"' : ''}>${c}</td>`).join('');
+                const bar = pcts ? `<td><div class="h723-bar"><span style="width:${Math.min(100, Math.max(0, pcts[ri])).toFixed(1)}%"></span></div></td>` : '';
+                return `<tr>${cells}${bar}</tr>`;
+            }).join('');
+            return `<table class="h723-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+        }
+
+        function h723TableData(tab, series) {
+            if (tab === 'secciones') {
+                const latest = series[series.length - 1];
+                const peakLoop = Math.max(0, ...series.map(x => x.loopMax));
+                const rows = [];
+                const pcts = [];
+                H723_SECTIONS.forEach(([key, label]) => {
+                    const last = latest.sections[key] || 0;
+                    const peak = Math.max(0, ...series.map(x => x.sections[key] || 0));
+                    const pct = peakLoop > 0 ? (peak / peakLoop) * 100 : 0;
+                    rows.push([label, h723Fmt(last), h723Fmt(peak), `${h723Fmt(pct)} %`]);
+                    pcts.push(pct);
+                });
+                return { headers: ['Sección', 'Último µs', 'Pico µs', '% del pico del lazo'], rows, pcts };
+            }
+            const rows = H723_METRICS.map(([key, label, unit]) => {
+                const st = h723Stats(series, key);
+                const dec = (unit === 'µs' || unit === '%') ? 1 : 0;
+                const f = v => h723Fmt(v, dec);
+                return [label, f(st.last), f(st.mean), f(st.min), f(st.max), unit];
+            });
+            return { headers: ['Magnitud', 'Último', 'Media', 'Mín', 'Máx', 'Unidad'], rows, pcts: null };
+        }
+
+        function renderH723(win) {
+            const content = win.querySelector('.h723-content');
+            const live = win.querySelector('.h723-live');
+            if (!content) return;
+            const tab = win._h723Tab || 'carga';
+            const series = h723Series(win);
+            if (live) {
+                live.innerHTML = h723Latest
+                    ? `<span>Ocupación lazo <strong>${h723Latest.cpu} %</strong></span>
+                       <span>ISR TIM6 <strong>${h723Latest.isr} %</strong></span>
+                       <span>Lazo máx <strong>${h723Fmt(h723Latest.loopMax)} µs</strong></span>
+                       <span>Underruns <strong>${h723Latest.ur}</strong></span>
+                       <span>Muestras <strong>${series.length}</strong></span>`
+                    : '<span>Sin datos todavía</span>';
+            }
+            if (!series.length) {
+                content.innerHTML = '<div class="h723-caption">Esperando datos del firmware: llega una línea PERF1 y otra PERF2 por segundo.</div>';
+                return;
+            }
+            const range = h723RangeLabel(win);
+            if (tab === 'carga') {
+                const cpu = h723Stats(series, 'cpu');
+                const isr = h723Stats(series, 'isr');
+                content.innerHTML = `
+                    <div class="h723-caption">Ocupación lazo · media ${h723Fmt(cpu.mean)} % · p95 ${h723Fmt(cpu.p95)} % · máx ${h723Fmt(cpu.max)} % · trabajo media ${h723Fmt(h723Stats(series, 'trabajo').mean)} % · ${range}</div>
+                    <div class="h723-chart"><canvas data-h723-chart="cpu"></canvas></div>
+                    <div class="h723-caption">ISR TIM6 · media ${h723Fmt(isr.mean)} % · máx ${h723Fmt(isr.max)} % · incluida en el tiempo de lazo (no se suma a la CPU)</div>
+                    <div class="h723-chart"><canvas data-h723-chart="isr"></canvas></div>`;
+                h723DrawIn(content, 'cpu', [{ name: 'Ocupación lazo %', color: H723_COLORS.cpu, values: series.map(x => x.cpu) }, { name: 'Trabajo %', color: H723_COLORS.trabajo, values: series.map(x => x.trabajo) }], { unit: '%', yMax: 100 });
+                h723DrawIn(content, 'isr', [{ name: 'ISR %', color: H723_COLORS.isr, values: series.map(x => x.isr) }], { unit: '%' });
+            } else if (tab === 'tiempos') {
+                content.innerHTML = `
+                    <div class="h723-caption">Tiempos por ciclo en µs · ${range} · máximos y medias por segundo</div>
+                    <div class="h723-chart"><canvas data-h723-chart="tiempos"></canvas></div>`;
+                h723DrawIn(content, 'tiempos', [
+                    { name: 'Lazo máx', color: H723_COLORS.loop, values: series.map(x => x.loopMax) },
+                    { name: 'Enq media', color: H723_COLORS.enqAvg, values: series.map(x => x.enqAvg) },
+                    { name: 'Enq máx', color: H723_COLORS.enqMax, values: series.map(x => x.enqMax) },
+                    { name: 'MoveXY media', color: H723_COLORS.movAvg, values: series.map(x => x.movAvg) },
+                    { name: 'MoveXY máx', color: H723_COLORS.movMax, values: series.map(x => x.movMax) },
+                    { name: 'Productor máx', color: H723_COLORS.prod, values: series.map(x => x.prodMax) }
+                ], { unit: 'µs' });
+            } else {
+                const t = h723TableData(tab, series);
+                const note = tab === 'secciones'
+                    ? `Cada sección es el máximo de su ventana de 1 s. El % es el pico de la sección frente al pico del lazo (${range}); no suman 100 %.`
+                    : `Media, mín y máx sobre ${range}. Underruns es el contador acumulado del firmware.`;
+                content.innerHTML = `<div class="h723-caption">${note}</div>` + h723Table(t.headers, t.rows, t.pcts);
+            }
+        }
+
+        function refreshH723Windows() {
+            h723Windows.forEach(win => {
+                if (win.isConnected) renderH723(win);
+                else h723Windows.delete(win);
+            });
+        }
+
+        function captureH723(win) {
+            const tab = win._h723Tab || 'carga';
+            const series = h723Series(win);
+            if (!series.length) { addLog('> H723: no hay muestras para capturar', ''); return; }
+            const api = window.cncApi;
+            if (!api) { addLog('> H723: bridge no disponible, captura no guardada', ''); return; }
+            const isTable = tab === 'secciones' || tab === 'tabla';
+            const charts = isTable ? [] : [...win.querySelectorAll('.h723-content canvas')];
+            if (!isTable && !charts.length) { addLog('> H723: no hay gráfica en esta pestaña', ''); return; }
+
+            const dpr = window.devicePixelRatio || 1;
+            const cpu = h723Stats(series, 'cpu');
+            const isr = h723Stats(series, 'isr');
+            const loop = h723Stats(series, 'loopMax');
+            const head = [
+                `Monitor H723 · ${H723_TAB_NAMES[tab] || tab} · ${new Date().toLocaleString('es-PE')}`,
+                `Rango: ${h723RangeLabel(win)} · muestras ${series.length} (1 por segundo)`,
+                `Ocupación lazo: media ${h723Fmt(cpu.mean)} % · p95 ${h723Fmt(cpu.p95)} % · máx ${h723Fmt(cpu.max)} %`,
+                `ISR TIM6: media ${h723Fmt(isr.mean)} % · máx ${h723Fmt(isr.max)} %`,
+                `Lazo máx: pico ${h723Fmt(loop.max)} µs · media de máximos ${h723Fmt(loop.mean)} µs`
+            ];
+            const pad = 12 * dpr, lineH = 16 * dpr;
+            const font = `${12 * dpr}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+            const measure = document.createElement('canvas').getContext('2d');
+            measure.font = font;
+
+            let textLines = [];
+            if (isTable) {
+                const t = h723TableData(tab, series);
+                const all = [t.headers, ...t.rows];
+                const widths = t.headers.map((_, c) => Math.max(...all.map(r => String(r[c]).length)));
+                textLines = all.map(r => r.map((cell, c) => String(cell).padEnd(widths[c] + 2)).join('').trimEnd());
+            }
+            const headW = Math.max(...head.map(l => measure.measureText(l).width));
+            const bodyW = isTable
+                ? Math.max(...textLines.map(l => measure.measureText(l).width))
+                : Math.max(...charts.map(c => c.width));
+            const headH = head.length * lineH + pad * 2;
+            const bodyH = isTable ? textLines.length * lineH + pad : charts.reduce((a, c) => a + c.height + pad, 0);
+
+            const out = document.createElement('canvas');
+            out.width = Math.ceil(Math.max(headW, bodyW) + pad * 2);
+            out.height = Math.ceil(headH + bodyH + pad);
+            const ctx = out.getContext('2d');
+            ctx.fillStyle = '#16171b';
+            ctx.fillRect(0, 0, out.width, out.height);
+            ctx.fillStyle = 'rgba(255,255,255,.88)';
+            ctx.font = font;
+            ctx.textBaseline = 'top';
+            head.forEach((line, i) => ctx.fillText(line, pad, pad + i * lineH));
+            let y = headH;
+            if (isTable) {
+                textLines.forEach((line, i) => ctx.fillText(line, pad, y + i * lineH));
+            } else {
+                charts.forEach(c => { ctx.drawImage(c, pad, y); y += c.height + pad; });
+            }
+
+            const t0 = series[0].t;
+            const meta = {
+                monitor: 'h723',
+                tab,
+                created: new Date().toLocaleString('es-PE'),
+                range: h723RangeLabel(win),
+                summary: { cpu, isr, loopMax: loop },
+                samples: series.map(x => ({
+                    t_s: +((x.t - t0) / 1000).toFixed(3), cpu: x.cpu, isr: x.isr,
+                    loop_avg_us: x.loopAvg, loop_max_us: x.loopMax, sections_us: x.sections,
+                    enq_n: x.enqN, enq_avg_us: x.enqAvg, enq_max_us: x.enqMax,
+                    mov_n: x.movN, mov_avg_us: x.movAvg, mov_max_us: x.movMax,
+                    prod_max_us: x.prodMax, isr_n: x.isrN, isr_avg_us: x.isrAvg, isr_max_us: x.isrMax,
+                    underruns: x.ur, free_slots: x.free
+                })),
+                png: out.toDataURL('image/png').split(',')[1]
+            };
+            api.saveMonitorCapture(`h723_${tab}`, JSON.stringify(meta), res => {
+                if (res && res.ok) addLog(`> H723: captura guardada en la biblioteca (${res.id})`, 'success');
+                else addLog('> H723: error al guardar la captura', '');
+            });
+        }
+
+        function exportH723Csv(win) {
+            const series = win ? h723Series(win) : h723History.slice();
+            if (!series.length) { addLog('> H723: no hay muestras para exportar', ''); return; }
+            const cols = ['t_s', 'cpu_pct', 'isr_pct', 'loop_avg_us', 'loop_max_us',
+                ...H723_SECTIONS.map(([key]) => `${key}_us`),
+                'enq_n', 'enq_avg_us', 'enq_max_us', 'mov_n', 'mov_avg_us', 'mov_max_us', 'prod_max_us',
+                'isr_n', 'isr_avg_us', 'isr_max_us', 'underruns', 'free_slots',
+                'trabajo_pct', 'fuera_pct', 'act_poll_pct', 'act_prot_pct', 'act_usb_pct', 'act_cam_pct',
+                'act_plan_pct', 'act_cnc_pct', 'act_led_pct', 'act_scr_pct',
+                'cache_i', 'cache_d', 'fpu', 'fpu_lazy', 'mhz', 'tim6', 'spi4', 'dma1', 'usb', 'gpioa'];
+            const t0 = series[0].t;
+            const lines = series.map(x => [
+                ((x.t - t0) / 1000).toFixed(3), x.cpu, x.isr, x.loopAvg.toFixed(1), x.loopMax.toFixed(1),
+                ...H723_SECTIONS.map(([key]) => (x.sections[key] || 0).toFixed(1)),
+                x.enqN, x.enqAvg.toFixed(1), x.enqMax.toFixed(1),
+                x.movN, x.movAvg.toFixed(1), x.movMax.toFixed(1), x.prodMax.toFixed(1),
+                x.isrN, x.isrAvg.toFixed(1), x.isrMax.toFixed(1), x.ur, x.free,
+                x.trabajo, x.fuera, x.actPoll, x.actProt, x.actUsb, x.actCam, x.actPlan, x.actCnc, x.actLed, x.actScr,
+                x.cacheI, x.cacheD, x.fpu, x.fpuLazy, x.mhz, x.tim6, x.spi4, x.dma1, x.usb, x.gpioa
+            ].join(','));
+            const blob = new Blob([[cols.join(','), ...lines].join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            downloadHref(url, `h723_${monitorStamp()}.csv`);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            addLog(`> H723: CSV exportado (${series.length} muestras)`, 'success');
+        }
+
+        function openH723Window() {
+            windowCounter++;
+            zCounter++;
+            const win = document.createElement('div');
+            win.className = 'h723-window glass';
+            const offsetIdx = (windowCounter - 1) % 6;
+            win.style.left = (120 + offsetIdx * 30) + 'px';
+            win.style.top = (90 + offsetIdx * 30) + 'px';
+            win.style.width = '560px';
+            win.style.height = '520px';
+            win.style.zIndex = zCounter;
+            win._h723Tab = 'carga';
+            win._h723Range = 120;
+
+            win.innerHTML = `
+                <div class="motor-titlebar h723-titlebar">
+                    <div class="traffic-lights">
+                        <button class="tl tl-close" aria-label="Cerrar"></button>
+                        <button class="tl tl-min" aria-label="Minimizar"></button>
+                        <button class="tl tl-max" aria-label="Maximizar"></button>
+                    </div>
+                    <div class="motor-tabs">
+                        <button class="motor-tab active" data-h723-tab="carga">Carga</button>
+                        <button class="motor-tab" data-h723-tab="tiempos">Tiempos</button>
+                        <button class="motor-tab" data-h723-tab="secciones">Secciones</button>
+                        <button class="motor-tab" data-h723-tab="tabla">Tabla</button>
+                    </div>
+                    <div class="tl-spacer"></div>
+                </div>
+                <div class="motor-body h723-body">
+                    <div class="h723-live"></div>
+                    <div class="motor-toolbar h723-toolbar">
+                        <select class="h723-range" aria-label="Rango">
+                            <option value="60">Últimos 60 s</option>
+                            <option value="120" selected>Últimos 120 s</option>
+                            <option value="600">Últimos 10 min</option>
+                            <option value="0">Todo</option>
+                        </select>
+                        <button class="motor-action" data-h723-act="png">Capturar PNG</button>
+                        <button class="motor-action" data-h723-act="csv">CSV</button>
+                        <button class="motor-action" data-h723-act="clear">Limpiar</button>
+                    </div>
+                    <div class="h723-content"></div>
+                </div>`;
+
+            win.querySelectorAll('[data-h723-tab]').forEach(tab => {
+                tab.addEventListener('click', e => {
+                    e.stopPropagation();
+                    win.querySelectorAll('[data-h723-tab]').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    win._h723Tab = tab.dataset.h723Tab;
+                    renderH723(win);
+                });
+            });
+
+            win.querySelector('.h723-range').addEventListener('change', e => {
+                e.stopPropagation();
+                win._h723Range = Number(e.target.value) || 0;
+                renderH723(win);
+            });
+
+            win.querySelectorAll('[data-h723-act]').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    const act = btn.dataset.h723Act;
+                    if (act === 'png') captureH723(win);
+                    else if (act === 'csv') exportH723Csv(win);
+                    else if (act === 'clear') {
+                        h723History.length = 0;
+                        h723Latest = null;
+                        refreshH723Windows();
+                        addLog('> H723: historial limpio', 'success');
+                    }
+                });
+            });
+
+            const closeWin = () => {
+                h723Windows.delete(win);
+                if (activeWindow === win) activeWindow = null;
+                if (win._ro) win._ro.disconnect();
+                win.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
+                win.style.opacity = '0';
+                win.style.transform = 'scale(0.94)';
+                setTimeout(() => win.remove(), 190);
+            };
+            win.querySelector('.tl-close').addEventListener('click', e => { e.stopPropagation(); closeWin(); });
+
+            const toggleMin = () => {
+                if (win.classList.contains('minimized')) {
+                    win.classList.remove('minimized');
+                    win.style.height = win._preMinHeight || '520px';
+                } else {
+                    win._preMinHeight = win.style.height || (win.offsetHeight + 'px');
+                    win.style.height = win.querySelector('.h723-titlebar').offsetHeight + 'px';
+                    win.classList.add('minimized');
+                }
+            };
+            const toggleMax = () => {
+                if (win.classList.contains('maximized')) {
+                    win.classList.remove('maximized');
+                    if (win._savedBounds) Object.assign(win.style, win._savedBounds);
+                    win._savedBounds = null;
+                } else {
+                    win._savedBounds = { left: win.style.left, top: win.style.top, width: win.style.width, height: win.style.height };
+                    win.classList.add('maximized');
+                    Object.assign(win.style, { left: '16px', top: '16px', width: 'calc(100vw - 32px)', height: 'calc(100vh - 32px)' });
+                }
+            };
+            win.querySelector('.tl-min').addEventListener('click', e => {
+                e.stopPropagation();
+                if (win.classList.contains('maximized')) { toggleMax(); setTimeout(toggleMin, 470); }
+                else toggleMin();
+            });
+            win.querySelector('.tl-max').addEventListener('click', e => {
+                e.stopPropagation();
+                if (win.classList.contains('minimized')) { toggleMin(); setTimeout(toggleMax, 470); }
+                else toggleMax();
+            });
+
+            win.addEventListener('pointerdown', () => {
+                win.style.zIndex = ++zCounter;
+                activeWindow = win;
+            });
+
+            const titlebar = win.querySelector('.h723-titlebar');
+            let dragging = false, dragStartX = 0, dragStartY = 0, origLeft = 0, origTop = 0, dragRaf = 0, dragEv = null;
+            titlebar.addEventListener('pointerdown', e => {
+                if (e.target.closest('.tl') || e.target.closest('.motor-tab')) return;
+                if (win.classList.contains('maximized')) return;
+                dragging = true;
+                dragStartX = e.clientX; dragStartY = e.clientY;
+                origLeft = win.offsetLeft; origTop = win.offsetTop;
+                win.classList.add('dragging');
+                try { titlebar.setPointerCapture(e.pointerId); } catch (_) {}
+            });
+            titlebar.addEventListener('pointermove', e => {
+                if (!dragging) return;
+                dragEv = e;
+                if (dragRaf) return;
+                dragRaf = requestAnimationFrame(() => {
+                    dragRaf = 0;
+                    win.style.left = (origLeft + dragEv.clientX - dragStartX) + 'px';
+                    win.style.top = (origTop + dragEv.clientY - dragStartY) + 'px';
+                });
+            });
+            const endDrag = e => {
+                if (!dragging) return;
+                dragging = false;
+                win.classList.remove('dragging');
+                try { titlebar.releasePointerCapture(e.pointerId); } catch (_) {}
+            };
+            titlebar.addEventListener('pointerup', endDrag);
+            titlebar.addEventListener('pointercancel', endDrag);
+            titlebar.addEventListener('dblclick', e => {
+                if (e.target.closest('.tl') || e.target.closest('.motor-tab')) return;
+                win.querySelector('.tl-max').click();
+            });
+
+            windowsLayer.appendChild(win);
+            activeWindow = win;
+            h723Windows.add(win);
+            win._ro = new ResizeObserver(() => renderH723(win));
+            win._ro.observe(win.querySelector('.h723-content'));
+            renderH723(win);
+            return win;
+        }
+        window.openH723Window = openH723Window;
+
         window.openEditorWindow = openEditorWindow;
         window.resetViewer = resetViewer;
         window.showOnlyLayers = showOnlyLayers;
@@ -3459,7 +4812,7 @@ const HL = { PTH: {c:'#00ffff', v:true, h:[]}, NPTH: {c:'#ff00ff', v:true, h:[]}
 const tool = {x:0, y:0, z:0, valid:true};
 const v2 = {zoom:1, px:0, py:0};
 const v3 = {rz:30, rx:45, zoom:1, px:0, py:0, sf:1.5};
-let view = '2d', showRapid = false, showCut = true, mouse = null, T2 = null;
+let view = '2d', showRapid = true, showCut = true, mouse = null, T2 = null;
 let hostTarget = null, hostFrame = 0, hostFrameTime = 0;
 let staticVersion = 0, staticKey2 = '', staticKey3 = '';
 const staticCanvas2 = document.createElement('canvas'), staticCanvas3 = document.createElement('canvas');
@@ -3825,7 +5178,7 @@ window.setHostConnection = (connected, polling) => { isConnected = !!connected; 
 const log = (m, t = '') => { if (!lens.classList.contains('expanded')) toggleTerminal(); setTimeout(() => addLog(m, t), 300); };
 let step = 1;
 const ctl = document.querySelectorAll('#accordionFab .segmented-control');
-const SP = {Lento:200, Normal:300, 'Rápido':2000, Turbo:5000};
+const SP = {Lento:200, Normal:450, 'Rápido':550, Turbo:5000};
 const sc = ctl[1]; const tb = document.createElement('div'); tb.className = 'segment'; tb.textContent = 'Turbo'; tb.setAttribute('onclick', 'setSegment(this)'); sc.appendChild(tb);
 sc.querySelectorAll('.segment').forEach(e => e.dataset.val = SP[e.textContent.trim()]);
 const MD = {Normal:'NORMAL', 'Rápido':'FAST', Preciso:'PRECISION'};
@@ -3844,7 +5197,7 @@ window.setEnabledAxesUI = axes => {
     enabledAxes[axis] = !!axes?.[axis];
     document.querySelectorAll(`[data-axis="${axis}"]`).forEach(el => { el.hidden = !enabledAxes[axis]; });
   });
-  document.querySelectorAll('.motor-window:not(.editor-window)').forEach(win => {
+  document.querySelectorAll('.motor-window:not(.editor-window):not(.servo-window)').forEach(win => {
     if (!enabledAxes[win.dataset.motor]) {
       const nextAxis = ['X','Y','Z'].find(axis => enabledAxes[axis]);
       win.dataset.motor = nextAxis || '';

@@ -202,7 +202,7 @@
       if (layer) checkbox.checked=!!layer.visible;
     });
     const editor = document.querySelector('.editor-window .gcode-editor');
-    if (editor && !editorDirty && document.activeElement !== editor && typeof program.text === 'string') {
+    if (editor && !editorDirty && !editor.value.trim() && document.activeElement !== editor && typeof program.text === 'string') {
       editor.value = program.text;
       editor.dispatchEvent(new Event('input', {bubbles:true}));
       editorDirty = false;
@@ -219,6 +219,7 @@
     if (!appendOnly) output.replaceChildren();
     lastConsole = text;
     consoleInitialized = true;
+    if (appendOnly) delta.split('\n').filter(Boolean).forEach(l => window.onServoLine?.(l));
     delta.split('\n').filter(Boolean).forEach(line => {
       const row = document.createElement('div');
       row.className = 'term-line' + (/ERROR|ALARM|FUERA|No conectado/i.test(line) ? '' : /OK|Cargado|iniciado|conectado|completado/i.test(line) ? ' success' : '');
@@ -229,6 +230,55 @@
     if (atBottom) output.scrollTop = output.scrollHeight;
   }
 
+  let editorDetached = false;
+
+  function setupEditorDetaching() {
+    const panel = new URLSearchParams(window.location.search).get('panel');
+    if (panel === 'editor') { enterEditorPanelMode(); return; }
+    api.editorReturned.connect(text => {
+      editorDetached = false;
+      const win = window.openEditorWindow?.();
+      const ed = win?.querySelector('.gcode-editor');
+      if (ed) { ed.value = text; ed.dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+    window.detachEditorWindow = () => {
+      const win = document.querySelector('.editor-window');
+      const ed = win?.querySelector('.gcode-editor');
+      if (!ed || editorDetached) return false;
+      editorDetached = true;
+      api.pushEditorText(ed.value);
+      win.remove();
+      api.detachEditor();
+      return true;
+    };
+  }
+
+  function enterEditorPanelMode() {
+    document.body.classList.add('panel-editor');
+    const layer = document.getElementById('windowsLayer');
+    for (let node = layer; node && node !== document.body; node = node.parentElement) {
+      Array.from(node.parentElement.children).forEach(sib => { if (sib !== node) sib.style.display = 'none'; });
+    }
+    const style = document.createElement('style');
+    style.textContent = `
+      html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg-solid, #1c1c1e) !important; }
+      body.panel-editor .editor-window { position: fixed !important; inset: 0 !important; left: 0 !important; top: 0 !important; width: 100vw !important; height: 100vh !important; min-width: 0 !important; min-height: 0 !important; max-width: none !important; max-height: none !important; border-radius: 0 !important; transform: none !important; resize: none !important; background: var(--bg-solid, #1c1c1e) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; box-shadow: none !important; }
+      body.panel-editor .editor-window::before { display: none !important; }
+      body.panel-editor .editor-window .motor-titlebar { display: none !important; }
+      body.panel-editor .editor-window .motor-body { position: absolute; inset: 0; box-sizing: border-box; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+      body.panel-editor .editor-toolbar { flex-wrap: wrap; row-gap: 6px; }
+      body.panel-editor .editor-hint { display: none; }
+      body.panel-editor .gc-body { grid-template-columns: clamp(120px, 24vw, 180px) minmax(0, 1fr); }
+      body.panel-editor .gc-body.files-hidden { grid-template-columns: 0px minmax(0, 1fr); }
+      body.panel-editor .gc-wrap { min-width: 0; }`;
+    document.head.appendChild(style);
+    const win = window.openEditorWindow?.();
+    const ed = win?.querySelector('.gcode-editor');
+    if (!win || !ed) return;
+    win.querySelector('.tl-close').onclick = () => api.closeDetachedEditor(ed.value);
+    api.getEditorText(text => { ed.value = text; ed.dispatchEvent(new Event('input', { bubbles: true })); });
+  }
+
   function activeEditorText() { return document.querySelector('.editor-window .gcode-editor')?.value || ''; }
 
   function bindEditorWindow(win) {
@@ -236,6 +286,8 @@
     if (!editor || editor.dataset.cncBound) return;
     editor.dataset.cncBound = '1';
     editor.addEventListener('input', () => { editorDirty = true; });
+    let pushTimer = 0;
+    editor.addEventListener('input', () => { clearTimeout(pushTimer); pushTimer = setTimeout(() => api?.pushEditorText?.(editor.value), 150); });
     const preview = win.querySelector('[data-editor-action="preview"]');
     if (preview) preview.addEventListener('click', () => { editorDirty = false; api.previewEditor(editor.value); toast('Vista previa actualizada'); });
     const save = win.querySelector('[data-editor-action="save"]');
@@ -373,6 +425,7 @@
     });
     const originalOpen = window.openEditorWindow;
     window.openEditorWindow = () => {
+      if (editorDetached) { toast("El editor está desacoplado en otra ventana"); return null; }
       const win = originalOpen();
       if (!win) return win;
       bindEditorWindow(win);
@@ -403,8 +456,10 @@
   new QWebChannel(qt.webChannelTransport, channel => {
     api = channel.objects.cnc;
     window.cncApi = api;
+    setupEditorDetaching();
     bindTemplateActions();
     api.stateChanged.connect(renderState);
+    api.perfChanged.connect(payload => window.pushPerfLine?.(payload));
     api.pulseStatsChanged.connect(payload => {
       window.setMotorPulseTelemetry?.(payload.stats || {}, !!payload.telemetryAvailable, !!lastState?.connected, true);
     });

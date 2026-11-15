@@ -113,7 +113,7 @@ def excellon_to_gcode(drl_text, feed=100.0, rapid=3000.0,
     lines.append(f"; Herramientas: {len(by_tool)}")
     lines.append("G21")
     lines.append("G90")
-    lines.append(f"G0 Z{safe_z:.3f} F{rapid:.1f}")
+    lines.append("M301")
 
     for diameter in sorted(by_tool.keys()):
         positions = by_tool[diameter]
@@ -123,11 +123,11 @@ def excellon_to_gcode(drl_text, feed=100.0, rapid=3000.0,
             gx = x + ox
             gy = y + oy
             lines.append(f"G0 X{gx:.3f} Y{gy:.3f}")
-            lines.append(f"G1 Z{drill_depth:.3f} F{feed:.1f}")
             lines.append(f"G0 Z{safe_z:.3f}")
 
     lines.append("")
     lines.append(f"G0 X{origin_x:.3f} Y{origin_y:.3f}")
+    lines.append("M302")
     lines.append("M30")
 
     return lines, {
