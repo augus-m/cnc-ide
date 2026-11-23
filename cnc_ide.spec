@@ -2,24 +2,24 @@
 # Compilar desde la carpeta gui_windows con:
 #   pyinstaller cnc_ide.spec
 
+import os, pathlib
+
 block_cipher = None
+
+# La carpeta data/ la crea la app en runtime — no se incluye en el spec
+datas = [
+    ('index.html',        '.'),
+    ('bridge.js',         '.'),
+    ('sim3d.js',          '.'),
+    ('backend/assets',    'backend/assets'),
+    ('vendor',            'vendor'),
+]
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[],
-    datas=[
-        # UI principal (WebEngine la sirve desde disco)
-        ('index.html',   '.'),
-        ('bridge.js',    '.'),
-        ('sim3d.js',     '.'),
-        # assets del backend (fuente logo, etc.)
-        ('backend/assets', 'backend/assets'),
-        # carpeta vendor (libs JS locales si las hay)
-        ('vendor',       'vendor'),
-        # datos persistentes vacíos para que exista la carpeta
-        ('data',         'data'),
-    ],
+    datas=datas,
     hiddenimports=[
         'serial.tools.list_ports',
         'serial.tools',
@@ -53,8 +53,8 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=True,
-    console=False,          # sin consola negra
-    # icon='cnc-ide.ico',   # descomenta si conviertes cnc-ide.png a .ico
+    console=False,
+    # icon='cnc-ide.ico',
 )
 
 coll = COLLECT(
