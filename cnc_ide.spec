@@ -17,7 +17,7 @@ datas = [
 
 a = Analysis(
     ['main.py'],
-    pathex=['.'],
+    pathex=['.', 'backend'],
     binaries=[],
     datas=datas,
     hiddenimports=[
@@ -29,6 +29,8 @@ a = Analysis(
         'excellon_parser',
         'cnc_bridge',
         'gcode_editor',
+        'gcode_model',
+        'pcb_preview',
         'serial.tools.list_ports',
         'serial.tools',
         'shapely',
