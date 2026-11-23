@@ -4,6 +4,7 @@ Flujo: pagina (PDF) o imagen -> recorte elegido -> binarizar -> adelgazar
 (Zhang-Suen) -> trazos de 1 pixel -> milimetros -> G-code con servo.
 """
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -46,6 +47,12 @@ def zhang_suen(img):
 
 def render_pdf_page(pdf_path, page, dpi):
     """Renderiza una pagina del PDF a escala de grises con pdftoppm."""
+    if shutil.which("pdftoppm") is None:
+        raise RuntimeError(
+            "No se encontro 'pdftoppm' (poppler-utils). En Windows instala "
+            "Poppler para Windows y agrega su carpeta 'bin' al PATH para "
+            "poder abrir archivos PDF."
+        )
     tmp = tempfile.mkdtemp()
     base = os.path.join(tmp, "pagina")
     subprocess.run(["pdftoppm", "-r", str(dpi), "-f", str(page), "-l", str(page),

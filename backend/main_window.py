@@ -3451,8 +3451,12 @@ class MainWindow(QMainWindow):
                                            QVBoxLayout, QLabel, QFormLayout, QComboBox, QCheckBox,
                                            QGroupBox)
             from PySide6.QtCore import QSettings
-            from dialogs import GlassDialog
-            from pcb_preview import PcbPreview
+            try:
+                from dialogs import GlassDialog
+                from pcb_preview import PcbPreview
+            except Exception as e:
+                QMessageBox.critical(self, "Error Gerber", str(e))
+                return
 
             cfg = QSettings("CNC Project", "gui_v_pcb")
             dlg = GlassDialog("Parametros de fresado de PCB", self)
@@ -3965,8 +3969,12 @@ class MainWindow(QMainWindow):
 
     def _open_image_to_gcode(self):
         """Convertir PDF / imagen a G-code (dibujo con la pluma)."""
-        from image_to_gcode import open_image_dialog
-        res = open_image_dialog(self)
+        try:
+            from image_to_gcode import open_image_dialog
+            res = open_image_dialog(self)
+        except Exception as e:
+            QMessageBox.critical(self, "Error PDF/imagen", str(e))
+            return
         if res is None:
             return
         lines, name = res
