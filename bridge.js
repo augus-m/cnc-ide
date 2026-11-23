@@ -2,6 +2,7 @@
   const byId = id => document.getElementById(id);
   let api = null;
   let lastState = null;
+  let m280WarningShown = false;
   let lastConsole = '';
   let consoleInitialized = false;
   let editorDirty = false;
@@ -153,6 +154,10 @@
         files.forEach((file,index) => {
           const row=document.createElement('div'); row.className='menu-item'; row.textContent=file.name || String(file);
           if(file.path) { row.style.cursor='pointer'; row.title='Doble clic para volver a abrir'; row.addEventListener('dblclick',()=>api.openRecent(index)); }
+          const xbtn=document.createElement('button'); xbtn.textContent='×'; xbtn.title='Quitar esta capa';
+          xbtn.style.cssText='float:right;background:none;border:0;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;';
+          xbtn.addEventListener('click',(e)=>{ e.stopPropagation(); api.removeRecent(index); });
+          row.appendChild(xbtn);
           fileList.appendChild(row);
         });
       }
@@ -374,7 +379,7 @@
     };
     const fileActions = new Map([
       ['Abrir G-code','gcode'], ['Convertir SVG','svg'], ['Convertir DXF','dxf'],
-      ['Convertir Gerber (PCB)','gerber'], ['Convertir Excellon (drill)','excellon'], ['Guardar G-code','save'],
+      ['Convertir Gerber (PCB)','gerber'], ['Convertir Excellon (drill)','excellon'], ['Convertir PDF / imagen','imagen'], ['Guardar G-code','save'],
     ]);
     document.querySelectorAll('#accordionFiles .menu-item').forEach(item => {
       const kind = fileActions.get(item.textContent.trim());

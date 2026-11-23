@@ -9,6 +9,7 @@ from pathlib import Path
 # Copia de la consola en un archivo de texto (para leerla desde fuera de la GUI).
 # Cualquier error de escritura se ignora: nunca debe afectar a la consola.
 import collections
+import sys
 import subprocess
 
 # Lineas de G-code enviadas sin esperar su OK (anticipacion del planner).
@@ -207,7 +208,7 @@ from PySide6.QtWidgets import (
     QComboBox, QSlider, QTabWidget,
 )
 
-from dialogs import ConnectDialog, SettingsDialog
+from dialogs import GlassDialog, ConnectDialog, SettingsDialog
 from serial_worker import SerialWorker
 from converter import svg_to_paths, dxf_to_paths, paths_to_gcode
 from gerber_parser import gerber_to_gcode
@@ -307,6 +308,31 @@ def make_logo_pixmap(size, dark=False):
 # ============================================================
 # VISOR 2D con toolpath coloreado
 # ============================================================
+
+
+def _is_excellon(path, text):
+    """True si el archivo es de taladros (Excellon): extension .drl/.xln o cabecera M48."""
+    ext = os.path.splitext(path)[1].lower()
+    return ext in (".drl", ".xln") or text.lstrip().startswith("M48")
+
+
+def _excellon_to_gerber_text(drl_text):
+    """Convierte taladros en un Gerber de circulos (un flash por agujero)."""
+    from excellon_parser import ExcellonParser
+    hs = ExcellonParser().parse(drl_text) or []
+    dias = sorted({round(d, 3) for _, _, d in hs})
+    out = ["%FSLAX46Y46*%", "%MOMM*%", "G01*"]
+    code = {}
+    for i, dv in enumerate(dias):
+        code[dv] = 10 + i
+        out.append(f"%ADD{10 + i}C,{dv:.3f}*%")
+    for dv in dias:
+        out.append(f"D{code[dv]}*")
+        for hx, hy, hd in hs:
+            if round(hd, 3) == dv:
+                out.append(f"X{int(round(hx * 1e6))}Y{int(round(hy * 1e6))}D03*")
+    out.append("M02*")
+    return "\n".join(out)
 
 
 def _board_name(filename):
@@ -2273,12 +2299,31 @@ class MainWindow(QMainWindow):
     # ============================================================
     # JOG
     # ============================================================
-    def _add_file_to_list_unique(self, name, path, tipo):
-        """Anade un archivo a la lista solo si no existe ya."""
+    def _add_file_to_list_unique(self, name, path, tipo, layer_key=None):
+        """Anade un archivo a la lista solo si no existe ya. layer_key = capa que genera."""
         for i in range(self.file_list.count()):
             if self.file_list.item(i).text() == name:
                 return
-        self.file_list.addItem(_make_file_item(path, name, tipo))
+        item = _make_file_item(path, name, tipo)
+        item.setData(258, layer_key)
+        self.file_list.addItem(item)
+
+    def remove_recent_file(self, index):
+        """Quita un archivo de la lista y borra solo su capa del visor."""
+        if not (0 <= index < self.file_list.count()):
+            return False
+        item = self.file_list.item(index)
+        key = item.data(258)
+        name = item.text()
+        self.file_list.takeItem(index)
+        if key and key != "GCode":
+            self.layer_gcodes.pop(key, None)
+            if hasattr(self, "_fabrication_layers"):
+                self._fabrication_layers.pop(key, None)
+            self.canvas_2d.clear_layer(key)
+        self._on_toggle_rapids()
+        self._log_system(f"Archivo quitado: {name}")
+        return True
 
     def _show_only_layers(self, only):
         """Muestra solo la capa indicada, respetando el filtro
@@ -2541,18 +2586,33 @@ class MainWindow(QMainWindow):
     def _hold_sleep_inhibit(self):
         """Impide que la PC se duerma mientras hay un trabajo en curso."""
         self._release_sleep_inhibit()
-        try:
-            self._sleep_inhibit = subprocess.Popen(
-                ["systemd-inhibit", "--what=sleep:idle", "--who=CNC IDE",
-                 "--why=Trabajo CNC en curso", "sleep", "infinity"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as e:
-            self._sleep_inhibit = None
-            self._log_system("No se pudo bloquear el suspender: %s" % e, level="error")
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000003)
+                self._sleep_inhibit = "win32"
+            except Exception as e:
+                self._sleep_inhibit = None
+                self._log_system("No se pudo bloquear el suspender (win32): %s" % e, level="error")
+        else:
+            try:
+                self._sleep_inhibit = subprocess.Popen(
+                    ["systemd-inhibit", "--what=sleep:idle", "--who=CNC IDE",
+                     "--why=Trabajo CNC en curso", "sleep", "infinity"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception as e:
+                self._sleep_inhibit = None
+                self._log_system("No se pudo bloquear el suspender: %s" % e, level="error")
 
     def _release_sleep_inhibit(self):
         proc = getattr(self, "_sleep_inhibit", None)
-        if proc is not None:
+        if proc == "win32":
+            try:
+                import ctypes
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+            except Exception:
+                pass
+        elif proc is not None:
             try:
                 proc.terminate()
             except Exception:
@@ -3088,122 +3148,293 @@ class MainWindow(QMainWindow):
         self._set_state("alarm")
 
     def _open_excellon_file(self):
-        """Abre un archivo Excellon (.drl) y genera G-code de taladrado."""
+        """Taladrado: misma ventana que fresado PCB (pluma, posicion, area, vista)."""
         path, _ = QFileDialog.getOpenFileName(
             self, "Abrir Excellon (taladros)", "",
-            "Excellon (*.drl *.xln *.drl);;Todos (*)"
+            "Excellon (*.drl *.xln);;Todos (*)"
         )
         if not path:
             return
 
-        from PySide6.QtWidgets import (QDialog, QFormLayout, QDialogButtonBox,
-                                        QDoubleSpinBox, QVBoxLayout, QLabel)
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Parametros de taladrado")
-        dlg.setMinimumWidth(380)
-        d_layout = QVBoxLayout(dlg)
-
-        info = QLabel(
-            "Configura la broca y la profundidad de taladrado.\n"
-            "Tipico: broca de 0.8mm a -1.8mm de profundidad."
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
+            QComboBox, QDoubleSpinBox, QCheckBox, QDialogButtonBox,
+            QPushButton, QLabel, QWidget, QFrame,
         )
-        info.setStyleSheet(f"color: {C_TEXT_2}; font-size: 11px;")
-        d_layout.addWidget(info)
+        from PySide6.QtCore import QSettings
+        from pcb_preview import ExcellonPreview
+        from excellon_parser import ExcellonParser, transform_holes
 
-        form = QFormLayout()
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            drl_text = f.read()
+        try:
+            holes_raw = ExcellonParser().parse(drl_text)
+        except Exception as e:
+            QMessageBox.critical(self, "Error Excellon", str(e))
+            return
+        if not holes_raw:
+            QMessageBox.warning(self, "Excellon", "No se encontraron taladros en el archivo.")
+            return
 
-        sp_feed = QDoubleSpinBox()
-        sp_feed.setRange(10, 1000)
-        sp_feed.setValue(100)
-        sp_feed.setSuffix(" mm/min")
-        form.addRow("Feed de taladrado:", sp_feed)
+        cfg = QSettings("CNC Project", "gui_v_taladro")
+        board = _board_name(path)
+        board_refs = self.__dict__.get("_board_refs", {})
+        g_rot = int(self.__dict__.get("_last_gerber_rotation", 0) or 0)
+        g_mir = tuple(self.__dict__.get("_last_gerber_mirror", (False, False)))
+        has_ref = board in board_refs
 
-        sp_rapid = QDoubleSpinBox()
-        sp_rapid.setRange(500, 10000)
-        sp_rapid.setValue(3000)
-        sp_rapid.setSuffix(" mm/min")
-        form.addRow("Feed de rapido:", sp_rapid)
+        answers = self.__dict__.setdefault("_align_answers", {})
+        ask_align = False
+        if has_ref:
+            if board not in answers:
+                resp = QMessageBox.question(
+                    self, "Alinear taladros",
+                    f"Estos taladros parecen ser de la placa '{board}'.\n\n"
+                    "¿Alinearlos con las capas ya cargadas?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                answers[board] = (resp == QMessageBox.Yes)
+            ask_align = answers[board]
 
-        sp_depth = QDoubleSpinBox()
-        sp_depth.setRange(-10.0, -0.1)
-        sp_depth.setDecimals(2)
-        sp_depth.setSingleStep(0.1)
-        sp_depth.setValue(-1.8)
-        sp_depth.setSuffix(" mm")
-        form.addRow("Profundidad (Z):", sp_depth)
+        dlg = GlassDialog("Parametros de fresado de PCB", self)
+        dlg.setMinimumWidth(1000)
+        dlg.resize(1040, 660)
+        dlg.setStyleSheet(
+            "QLabel { color: #ffffff; background: transparent; font-size: 12px; }"
+            "QGroupBox { color: #ffffff; font-weight: 600; border: 1px solid rgba(255,255,255,0.12);"
+            " border-radius: 12px; margin-top: 14px; padding: 14px 10px 10px 10px;"
+            " background: rgba(255,255,255,0.03); }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; color: #8e8e93; }"
+            "QDoubleSpinBox, QComboBox { background-color: rgba(255,255,255,0.08);"
+            " border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 4px 8px;"
+            " color: #ffffff; min-height: 22px; }"
+            "QDoubleSpinBox:focus, QComboBox:focus { border: 1px solid #0A84FF; }"
+            "QComboBox QAbstractItemView { background: #1c1c1e; color: #ffffff; selection-background-color: #0A84FF; }"
+            "QCheckBox { color: #ffffff; background: transparent; }"
+            "QPushButton { border-radius: 8px; padding: 7px 20px; font-size: 12px; border: none; }"
+            "QPushButton#DlgSecondary { background-color: rgba(255,255,255,0.10); color: #ffffff; }"
+            "QPushButton#DlgSecondary:hover { background-color: rgba(255,255,255,0.16); }"
+        )
+        root = dlg.content_layout
+        root.setSpacing(12)
 
-        sp_safe = QDoubleSpinBox()
-        sp_safe.setRange(0.5, 20.0)
-        sp_safe.setDecimals(2)
-        sp_safe.setValue(2.0)
-        sp_safe.setSuffix(" mm")
-        form.addRow("Z de seguridad:", sp_safe)
+        body = QHBoxLayout()
+        body.setSpacing(16)
+        preview = ExcellonPreview(drl_text)
+        body.addWidget(preview, 3)
 
-        d_layout.addLayout(form)
+        right = QVBoxLayout()
+        right.setSpacing(10)
+
+        def card(title):
+            g = QGroupBox(title)
+            f = QFormLayout(g)
+            f.setSpacing(8)
+            right.addWidget(g)
+            return f
+
+        def dspin(lo, hi, step, dec, val, suffix=" mm"):
+            w = QDoubleSpinBox()
+            w.setRange(lo, hi)
+            w.setSingleStep(step)
+            w.setDecimals(dec)
+            w.setValue(val)
+            w.setSuffix(suffix)
+            return w
+
+        # Herramienta
+        f_tool = card("Herramienta")
+        sp_dia = dspin(0.10, 6.00, 0.05, 2, float(cfg.value("broca", 0.80)))
+        cb_type = QComboBox()
+        cb_type.addItems(["PTH", "NPTH"])
+        cb_type.setCurrentIndex(0 if str(cfg.value("tipo", "PTH")) == "PTH" else 1)
+        f_tool.addRow("Diametro (broca):", sp_dia)
+        f_tool.addRow("Tipo de hoja:", cb_type)
+
+        # Servo: mismos campos que fresado. Ojo: el taladro emite M301.
+        f_pen = card("Servo")
+        cb_pen_mode = QComboBox()
+        cb_pen_mode.addItems(["M280 personalizado", "M301 (automatico)"])
+        cb_pen_mode.setCurrentIndex(int(cfg.value("pen_mode", 0)))
+        sp_pen_up = dspin(0.0, 180.0, 1.0, 1, float(cfg.value("pen_up", 10.0)), " °")
+        sp_pen_dn = dspin(0.0, 180.0, 1.0, 1, float(cfg.value("pen_dn", 45.0)), " °")
+        cb_pen_fmt = QComboBox()
+        cb_pen_fmt.addItems(["M280 S<angulo>", "M280 P0 S<angulo>"])
+        cb_pen_fmt.setCurrentIndex(int(cfg.value("pen_fmt", 0)))
+        sp_pen_speed = dspin(1.0, 240.0, 1.0, 0, float(cfg.value("pen_speed", 25)), " °/s")
+        f_pen.addRow("Modo:", cb_pen_mode)
+        f_pen.addRow("Arriba (S):", sp_pen_up)
+        f_pen.addRow("Abajo (S):", sp_pen_dn)
+        f_pen.addRow("Formato:", cb_pen_fmt)
+        f_pen.addRow("Velocidad bajada:", sp_pen_speed)
+
+        # Posicion y transformacion
+        f_pos = card("Posicion y transformacion")
+        _go = self.__dict__.get("_last_gerber_origin")
+        sp_ox = dspin(-500.0, 500.0, 0.1, 2, float(_go[0]) if _go else float(cfg.value("origin_x", 0.0)))
+        sp_oy = dspin(-500.0, 500.0, 0.1, 2, float(_go[1]) if _go else float(cfg.value("origin_y", 0.0)))
+        cb_rot = QComboBox()
+        for deg in (0, 90, 180, 270):
+            cb_rot.addItem(f"{deg}°", deg)
+        cb_rot.setCurrentIndex(cb_rot.findData(g_rot if g_rot in (0, 90, 180, 270) else 0))
+        cb_mx = QCheckBox("Espejo en X (capa inferior B.Cu)")
+        cb_mx.setChecked(bool(g_mir[0]))
+        cb_my = QCheckBox("Espejo en Y")
+        cb_my.setChecked(bool(g_mir[1]))
+        cb_align = QCheckBox("Alinear con capas de la placa")
+        f_pos.addRow("Origen X:", sp_ox)
+        f_pos.addRow("Origen Y:", sp_oy)
+        f_pos.addRow("Rotacion:", cb_rot)
+        f_pos.addRow(cb_mx)
+        f_pos.addRow(cb_my)
+        f_pos.addRow(cb_align)
+        lbl_warn = QLabel("")
+        lbl_warn.setWordWrap(True)
+        lbl_warn.setStyleSheet("color:#ff9f0a;font-size:10px;")
+        f_pos.addRow(lbl_warn)
+
+        # Area de trabajo
+        f_area = card("Area de trabajo")
+        sp_w = dspin(10.0, 1000.0, 1.0, 1, float(cfg.value("area_w", 170.0)))
+        sp_h = dspin(10.0, 1000.0, 1.0, 1, float(cfg.value("area_h", 170.0)))
+        f_area.addRow("Ancho X:", sp_w)
+        f_area.addRow("Alto Y:", sp_h)
+        lbl_fit = QLabel("")
+        lbl_fit.setWordWrap(True)
+        f_area.addRow(lbl_fit)
+
+        # Profundidad
+        f_depth = card("Profundidad")
+        sp_depth = dspin(-20.0, 0.0, 0.1, 2, float(cfg.value("depth", -1.8)))
+        sp_safe = dspin(0.5, 20.0, 0.5, 2, float(cfg.value("safe_z", 2.0)))
+        f_depth.addRow("Profundidad (Z):", sp_depth)
+        f_depth.addRow("Z de seguridad:", sp_safe)
+
+        btn_center = QPushButton("Centrar en taladros")
+        btn_center.setObjectName("DlgSecondary")
+        right.addWidget(btn_center)
+        right.addStretch(1)
+        from PySide6.QtWidgets import QScrollArea
+        _inner = QWidget()
+        _inner.setLayout(right)
+        _scroll = QScrollArea()
+        _scroll.setWidgetResizable(True)
+        _scroll.setWidget(_inner)
+        _scroll.setFrameShape(QFrame.NoFrame)
+        _scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        body.addWidget(_scroll, 2)
+        root.addLayout(body)
+
+        def cur_transform():
+            return cb_rot.currentData(), cb_mx.isChecked(), cb_my.isChecked()
+
+        def refresh():
+            rot, mx, my = cur_transform()
+            th = transform_holes(holes_raw, rot, mx, my)
+            preview.set_holes(th)
+            preview.set_work(sp_w.value(), sp_h.value())
+            preview.set_origin(sp_ox.value(), sp_oy.value())
+            xs = [h[0] for h in th]
+            ys = [h[1] for h in th]
+            bw, bh = max(xs) - min(xs), max(ys) - min(ys)
+            ox, oy = sp_ox.value(), sp_oy.value()
+            fits = (ox + bw <= sp_w.value()) and (oy + bh <= sp_h.value())
+            lbl_fit.setText(f"Taladros {bw:.1f} x {bh:.1f} mm en origen ({ox:.1f}, {oy:.1f}): "
+                            + ("CABE" if fits else "NO CABE"))
+            lbl_fit.setStyleSheet("color:#27c93f;" if fits else "color:#ff5f56;")
+            same = (rot == g_rot and (mx, my) == g_mir)
+            if has_ref and not same:
+                lbl_warn.setText("Rotacion o espejo distintos del Gerber: no se puede alinear.")
+            else:
+                lbl_warn.setText("")
+            cb_align.setEnabled(has_ref and same)
+            cb_align.setChecked(ask_align and has_ref and same)
+
+        for w in (sp_ox, sp_oy, sp_w, sp_h):
+            w.valueChanged.connect(lambda _v: refresh())
+        for w in (cb_rot,):
+            w.currentIndexChanged.connect(lambda _i: refresh())
+        for w in (cb_mx, cb_my):
+            w.toggled.connect(lambda _b: refresh())
+        preview.originPicked.connect(lambda x, y: (sp_ox.setValue(round(x, 2)), sp_oy.setValue(round(y, 2))))
+        btn_center.clicked.connect(preview.center_on_holes)
 
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.button(QDialogButtonBox.Ok).setText("Generar")
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
-        d_layout.addWidget(btns)
+        root.addWidget(btns)
 
+        refresh()
         if dlg.exec() != QDialog.Accepted:
             return
 
+        cfg.setValue("broca", sp_dia.value())
+        cfg.setValue("tipo", cb_type.currentText())
+        cfg.setValue("pen_mode", cb_pen_mode.currentIndex())
+        cfg.setValue("pen_up", sp_pen_up.value())
+        cfg.setValue("pen_dn", sp_pen_dn.value())
+        cfg.setValue("pen_fmt", cb_pen_fmt.currentIndex())
+        cfg.setValue("pen_speed", sp_pen_speed.value())
+        cfg.setValue("origin_x", sp_ox.value())
+        cfg.setValue("origin_y", sp_oy.value())
+        cfg.setValue("area_w", sp_w.value())
+        cfg.setValue("area_h", sp_h.value())
+        cfg.setValue("depth", sp_depth.value())
+        cfg.setValue("safe_z", sp_safe.value())
+
+        origin_x = sp_ox.value()
+        origin_y = sp_oy.value()
+        rot, mx, my = cur_transform()
+        ref = board_refs[board] if (cb_align.isChecked() and cb_align.isEnabled()) else None
+
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                drl_text = f.read()
-
-            self._log_system(f"Parseando {os.path.basename(path)}...")
-            gcode, info = excellon_to_gcode(
-                drl_text,
-                feed=sp_feed.value(),
-                rapid=sp_rapid.value(),
-                drill_depth=sp_depth.value(),
-                safe_z=sp_safe.value(),
-            )
-
-            self._log_system(
-                f"Excellon: {info['total_holes']} taladros, "
-                f"{info['tools']} herramientas"
-            )
-            for d, count in info["by_tool"].items():
-                self._log_system(f"  Broca {d:.2f} mm: {count} agujeros")
-
-            # Extraer las posiciones de los taladros
-            from excellon_parser import ExcellonParser
-            excel_parser = ExcellonParser()
-            holes_raw = excel_parser.parse(drl_text)
-
-            # Aplicar el offset del Gerber (si hay uno cargado)
-            ox, oy = getattr(self, '_last_offset', (0.0, 0.0))
-            holes = [(x + ox, y + oy, d) for (x, y, d) in holes_raw]
-
-            # ¿Hay un Gerber cargado? Entonces SUPERponer los taladros
-            # SIN borrar el toolpath del cobre
-            if self.canvas_2d.toolpath_segments:
-                self.canvas_2d.set_holes(holes)
-                self.canvas_3d.set_holes(holes)
-                self._log_system(f"Taladros superpuestos sobre el Gerber: {len(holes)} puntos cyan")
-            else:
-                # No hay Gerber: cargar el G-code de taladrado normal
-                self._load_gcode(gcode, os.path.basename(path) + ".gcode",
-                                 add_to_list=False)
-                self.canvas_2d.set_holes(holes)
-                self.canvas_3d.set_holes(holes)
-
-            # Guardar metadata para doble clic (sin duplicar)
-            self._add_file_to_list_unique(os.path.basename(path) + ".gcode",
-                                          path, "excellon")
-
+            # Los taladros se dibujan como un Gerber de "flashes" (un circulo por agujero),
+            # asi usan el mismo convertidor que el cobre (rotacion, espejo, origen, servo).
+            def _holes_to_gerber(hs):
+                dias = sorted({round(d, 3) for _, _, d in hs})
+                out = ["%FSLAX46Y46*%", "%MOMM*%", "G01*"]
+                code = {}
+                for i, dv in enumerate(dias):
+                    code[dv] = 10 + i
+                    out.append(f"%ADD{10 + i}C,{dv:.3f}*%")
+                for dv in dias:
+                    out.append(f"D{code[dv]}*")
+                    for hx, hy, hd in hs:
+                        if round(hd, 3) == dv:
+                            out.append(f"X{int(round(hx * 1e6))}Y{int(round(hy * 1e6))}D03*")
+                out.append("M02*")
+                return "\n".join(out)
+            from gerber_parser import gerber_to_gcode as _g2g
+            _res = _g2g(_holes_to_gerber(holes_raw), tool_diameter=sp_dia.value(), clearance=0.0,
+                        feed=300.0, origin_x=origin_x, origin_y=origin_y,
+                        rotation=rot, mirror_x=mx, mirror_y=my,
+                        pen_mode="m280", servo_up=sp_pen_up.value(), servo_down=sp_pen_dn.value(),
+                        servo_p0=(cb_pen_fmt.currentIndex() == 1),
+                        servo_down_speed=sp_pen_speed.value(),
+                        modo="contorno", ref_bounds=ref)
+            gcode = _res[0] if isinstance(_res, tuple) else _res
+            info = {}
         except Exception as e:
             QMessageBox.critical(self, "Error Excellon", str(e))
+            return
+
+        self._log_system(f"Taladros: {len(holes_raw)} agujeros (dibujados como Gerber)")
+
+        th = transform_holes(holes_raw, rot, mx, my)
+        bx = ref[0] if ref is not None else min(h[0] for h in th)
+        by = ref[1] if ref is not None else min(h[1] for h in th)
+        holes = [(x - bx + origin_x, y - by + origin_y, d) for (x, y, d) in th]
+
+        self._load_gcode(gcode, os.path.basename(path) + ".gcode", add_to_list=True)
+        self.canvas_2d.set_holes(holes)
+        self.canvas_3d.set_holes(holes)
 
     def _open_gerber_file(self, path=None, params=None):
         """Abre un archivo Gerber. Sin params muestra el dialogo de parametros."""
         if path is None:
             path, _ = QFileDialog.getOpenFileName(
                 self, "Abrir Gerber (PCB)", "",
-                "Gerber (*.gbr *.gtl *.gbl *.gts *.gbs *.gto *.gbo *.ger *.art);;"
+                "Gerber y taladros (*.gbr *.gtl *.gbl *.gts *.gbs *.gto *.gbo *.ger *.art *.drl *.xln);;"
                 "Todos (*)"
             )
         if not path:
@@ -3212,6 +3443,8 @@ class MainWindow(QMainWindow):
         if params is None:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 pre_text = f.read()
+            if _is_excellon(path, pre_text):
+                pre_text = _excellon_to_gerber_text(pre_text)
 
             # Dialogo de parametros: plano 2D a la izquierda, ajustes en tarjetas a la derecha
             from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QDoubleSpinBox, QHBoxLayout,
@@ -3302,8 +3535,8 @@ class MainWindow(QMainWindow):
             f_tool.addRow("Segmento minimo:", sp_min)
             f_tool.addRow(cb_arc)
             cb_modo = QComboBox()
-            cb_modo.addItems(['Dibujo: contorno', 'Dibujo: relleno', 'Dibujo: contorno + relleno', 'Fresado: aislamiento', 'Fresado: aislamiento + Edge.Cuts'])
-            _modo_idx = {k:i for i,k in enumerate(['contorno', 'relleno', 'ambos', 'aislamiento', 'aislamiento_edge'])}
+            cb_modo.addItems(['Dibujo: contorno', 'Dibujo: relleno', 'Dibujo: contorno + relleno', 'Fresado: aislamiento', 'Fresado: aislamiento + Edge.Cuts', 'Plumon: pistas + relleno', 'Plumon: KiCad (pasadas + pads rellenos)'])
+            _modo_idx = {k:i for i,k in enumerate(['contorno', 'relleno', 'ambos', 'aislamiento', 'aislamiento_edge', 'pistas_relleno', 'plumon_kicad'])}
             cb_modo.setCurrentIndex(_modo_idx.get(str(cfg.value("modo", "contorno")), 0))
             sp_pitch = QDoubleSpinBox()
             sp_pitch.setRange(0.02, 2.0)
@@ -3488,7 +3721,7 @@ class MainWindow(QMainWindow):
             def push_options():
                 preview.set_options(tool=sp_tool.value(), clearance=sp_clear.value(),
                                     simplify_tol=sp_tol.value(),
-                                    modo=["contorno", "relleno", "ambos", "aislamiento", "aislamiento_edge"][cb_modo.currentIndex()],
+                                    modo=["contorno", "relleno", "ambos", "aislamiento", "aislamiento_edge", "pistas_relleno", "plumon_kicad"][cb_modo.currentIndex()],
                                     hatch_pitch=sp_pitch.value(),
                                     mirror_x=cb_mx.isChecked(), mirror_y=cb_my.isChecked(),
                                     rotation=rot_opts[cb_rot.currentIndex()])
@@ -3532,7 +3765,7 @@ class MainWindow(QMainWindow):
             oy = sp_oy.value()
             tol = sp_tol.value()
             min_seg = sp_min.value()
-            _mk = ['contorno', 'relleno', 'ambos', 'aislamiento', 'aislamiento_edge']
+            _mk = ['contorno', 'relleno', 'ambos', 'aislamiento', 'aislamiento_edge', 'pistas_relleno', 'plumon_kicad']
             modo = _mk[cb_modo.currentIndex()] if cb_modo.currentIndex() < len(_mk) else "contorno"
             hatch_pitch = sp_pitch.value()
             cfg.setValue("modo", modo)
@@ -3570,7 +3803,7 @@ class MainWindow(QMainWindow):
             oy = float(params.get("origin_y", 0.0))
             tol = float(params.get("simplify_tol", 0.02))
             min_seg = float(params.get("min_seg", 0.05))
-            _mk2 = ['contorno', 'relleno', 'ambos', 'aislamiento', 'aislamiento_edge']
+            _mk2 = ['contorno', 'relleno', 'ambos', 'aislamiento', 'aislamiento_edge', 'pistas_relleno', 'plumon_kicad']
             modo = str(params.get("modo", "contorno"))
             _edge_text = None
             hatch_pitch = float(params.get("hatch_pitch", 0.15))
@@ -3589,6 +3822,8 @@ class MainWindow(QMainWindow):
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 gerber_text = f.read()
+            if _is_excellon(path, gerber_text):
+                gerber_text = _excellon_to_gerber_text(gerber_text)
 
             self._log_system(f"Parseando {os.path.basename(path)}...")
 
@@ -3607,16 +3842,23 @@ class MainWindow(QMainWindow):
 
             # Capas de una misma placa: mismo prefijo de nombre. La primera capa
             # fija el marco comun; las siguientes preguntan si se alinean con el.
+            self._last_gerber_rotation = rotation
+            self._last_gerber_mirror = (bool(mirror_x), bool(mirror_y))
             board = _board_name(path)
+            # Guardar el texto de cada capa por placa, para dibujarlas en la vista de taladro.
+            self.__dict__.setdefault("_board_layers", {}).setdefault(board, {})[layer_name] = gerber_text
             board_refs = self.__dict__.setdefault("_board_refs", {})
             ref_bounds = None
+            answers = self.__dict__.setdefault("_align_answers", {})
             if board in board_refs:
-                resp = QMessageBox.question(
-                    self, "Alinear capas",
-                    f"Estas capas parecen ser de la placa '{board}'.\n\n"
-                    "¿Alinearlas con la misma referencia (contorno o la primera capa cargada)?",
-                    QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-                if resp == QMessageBox.Yes:
+                if board not in answers:
+                    resp = QMessageBox.question(
+                        self, "Alinear capas",
+                        f"Estas capas parecen ser de la placa '{board}'.\n\n"
+                        "¿Alinearlas con la misma referencia (contorno o la primera capa cargada)?",
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                    answers[board] = (resp == QMessageBox.Yes)
+                if answers[board]:
                     ref_bounds = board_refs[board]
             else:
                 # Marco en el MISMO espacio que usa la conversion (rotacion y espejo
@@ -3628,6 +3870,16 @@ class MainWindow(QMainWindow):
                 if _b:
                     board_refs[board] = (_b[0], _b[1])
 
+            # El contorno Edge.Cuts fija el marco de la placa: siempre gana sobre la primera capa.
+            if layer_name == "Edge.Cuts":
+                from gerber_parser import gerber_to_paths as _gtp_e
+                _pe, _eb, _ie = _gtp_e(gerber_text, tool, clearance, simplify_tol=tol,
+                                       mirror_x=mirror_x, mirror_y=mirror_y, rotation=rotation)
+                if _eb:
+                    board_refs[board] = (_eb[0], _eb[1])
+                ref_bounds = None
+            self._last_gerber_origin = (ox, oy)
+            _drill_list = [(float(h[0]), float(h[1]), float(h[2])) for _ld in getattr(self, 'hole_layers', {}).values() for h in _ld.get('holes', []) if len(h) >= 3]
             gcode, info = gerber_to_gcode(
                 gerber_text,
                 tool_diameter=tool,
@@ -3647,6 +3899,8 @@ class MainWindow(QMainWindow):
                 min_seg=min_seg,
                 modo="aislamiento" if modo in ("aislamiento","aislamiento_edge") else modo,
                 hatch_pitch=hatch_pitch,
+                drill_text=_drill_list,
+                fill_min_width=2.0,
                 edge_gerber=_edge_text if modo == "aislamiento_edge" else None,
                 arc_fit=arc_fit,
                 servo_up=servo_up,
@@ -3678,7 +3932,7 @@ class MainWindow(QMainWindow):
                              add_to_list=False, layer_name=layer_name)
 
             # Guardar para doble clic (sin duplicar)
-            self._add_file_to_list_unique(_fname, path, "gerber")
+            self._add_file_to_list_unique(_fname, path, "gerber", layer_name)
 
         except Exception as e:
             QMessageBox.critical(self, "Error Gerber", str(e))
@@ -3708,6 +3962,16 @@ class MainWindow(QMainWindow):
                 self.file_list.item(self.file_list.count() - 1).setData(Qt.UserRole, {"path": path, "type": "gcode"})
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
+
+    def _open_image_to_gcode(self):
+        """Convertir PDF / imagen a G-code (dibujo con la pluma)."""
+        from image_to_gcode import open_image_dialog
+        res = open_image_dialog(self)
+        if res is None:
+            return
+        lines, name = res
+        self._load_gcode(lines, name, add_to_list=True)
+        self._log_system(f"Dibujo generado: {name}")
 
     def _open_svg_file(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -3822,7 +4086,9 @@ class MainWindow(QMainWindow):
 
         # Solo añadir a la lista la PRIMERA vez
         if add_to_list:
-            self.file_list.addItem(QListWidgetItem(name))
+            _it = QListWidgetItem(name)
+            _it.setData(258, layer_name)
+            self.file_list.addItem(_it)
 
         n = len(lines)
         self.lbl_line_count.setText(f"0/{n}")

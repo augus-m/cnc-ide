@@ -22,6 +22,8 @@ def parse_program(lines, arc_tolerance=0.02):
     spindle = False
     segments = []
     warnings = []
+    pen_up_val = None   # valor S del primer M280 = pluma arriba
+    pen_is_up = False
     stats = {"total": len(lines), "empty": 0, "comments": 0,
              "g0": 0, "g1": 0, "g2": 0, "g3": 0, "other_g": 0,
              "m_codes": 0, "min_x": None, "max_x": None,
@@ -47,6 +49,10 @@ def parse_program(lines, arc_tolerance=0.02):
         if 21 in gs: unit = 1.0
         if 90 in gs: absolute = True
         if 91 in gs: absolute = False
+        if 280 in ms and "S" in vals:
+            if pen_up_val is None:
+                pen_up_val = vals["S"]
+            pen_is_up = abs(vals["S"] - pen_up_val) < 1e-6
         for m in ms:
             stats["m_codes"] += 1
             if m in (3, 4): spindle = True
@@ -119,7 +125,8 @@ def parse_program(lines, arc_tolerance=0.02):
                 pts[-1] = (end[0], end[1], end[2])
                 points = pts
         prev = start
-        kind = "rapid" if motion == 0 else ("arc" if motion in (2,3) else "cut")
+        # Con pluma (M280): G1 con pluma arriba es un viaje, se dibuja punteado como G0
+        kind = "rapid" if (motion == 0 or (motion == 1 and pen_is_up)) else ("arc" if motion in (2,3) else "cut")
         for p in points:
             segments.append((prev[0], prev[1], p[0], p[1], kind, idx, prev[2], p[2], feed, spindle))
             stats["distance"] += math.dist(prev, p)

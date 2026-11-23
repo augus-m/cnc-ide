@@ -174,3 +174,157 @@ class PcbPreview(QWidget):
         p.drawText(QPointF(self.MARGIN, 16),
                    "Area %.0f x %.0f mm   |   clic = fijar origen" % (w, h))
         p.end()
+
+
+
+from PySide6.QtWidgets import QWidget as _QW
+from PySide6.QtGui import QPainter as _QP, QPen as _QPen, QColor as _QC
+from PySide6.QtCore import Qt as _Qt, Signal as _Sig, QPointF as _QPF, QRectF as _QRF
+
+
+class ExcellonPreview(_QW):
+    originPicked = _Sig(float, float)
+    WORK = (170.0, 170.0)
+    MARGIN = 20
+
+    def __init__(self, drl_text, parent=None):
+        super().__init__(parent)
+        from excellon_parser import ExcellonParser
+        try:
+            self._holes = ExcellonParser().parse(drl_text) or []
+        except Exception:
+            self._holes = []
+        self._origin = (0.0, 0.0)
+        self._work = self.WORK
+        self._zoom = 1.0
+        self._pan = [0.0, 0.0]
+        self._drag = None
+        self.setMinimumSize(360, 360)
+        self.setMouseTracking(False)
+
+    def set_origin(self, x, y):
+        self._origin = (x, y)
+        self.update()
+
+    def set_holes(self, holes):
+        self._holes = list(holes)
+        self.update()
+
+    def set_work(self, w, h):
+        self._work = (max(1.0, float(w)), max(1.0, float(h)))
+        self.update()
+
+    def _base_scale(self):
+        w, h = self._work
+        aw = max(10, self.width() - 2 * self.MARGIN)
+        ah = max(10, self.height() - 2 * self.MARGIN)
+        return min(aw / w, ah / h)
+
+    def _scale(self):
+        return self._base_scale() * self._zoom
+
+    def _to_px(self, x, y, s):
+        return (self.MARGIN + self._pan[0] + x * s,
+                self.height() - self.MARGIN - self._pan[1] - y * s)
+
+    def _to_mm(self, px, py, s):
+        return ((px - self.MARGIN - self._pan[0]) / s,
+                (self.height() - self.MARGIN - self._pan[1] - py) / s)
+
+    def center_on_holes(self):
+        if not self._holes:
+            self._pan = [0.0, 0.0]
+            self._zoom = 1.0
+            self.update()
+            return
+        xs = [h[0] for h in self._holes]
+        ys = [h[1] for h in self._holes]
+        cx = (min(xs) + max(xs)) / 2.0
+        cy = (min(ys) + max(ys)) / 2.0
+        s = self._scale()
+        self._pan = [self.width() / 2.0 - self.MARGIN - cx * s,
+                     self.height() / 2.0 - self.MARGIN - cy * s]
+        self.update()
+
+    def wheelEvent(self, ev):
+        factor = 1.2 if ev.angleDelta().y() > 0 else 1 / 1.2
+        new_zoom = max(0.2, min(40.0, self._zoom * factor))
+        pos = ev.position()
+        s_old = self._scale()
+        mx, my = self._to_mm(pos.x(), pos.y(), s_old)
+        self._zoom = new_zoom
+        s_new = self._scale()
+        self._pan[0] = pos.x() - self.MARGIN - mx * s_new
+        self._pan[1] = self.height() - self.MARGIN - pos.y() - my * s_new
+        self.update()
+
+    def mousePressEvent(self, ev):
+        if ev.button() in (_Qt.RightButton, _Qt.MiddleButton):
+            self._drag = (ev.position().x(), ev.position().y())
+            return
+        if ev.button() == _Qt.LeftButton:
+            s = self._scale()
+            x, y = self._to_mm(ev.position().x(), ev.position().y(), s)
+            w, h = self._work
+            x = max(0.0, min(w, x))
+            y = max(0.0, min(h, y))
+            self._origin = (x, y)
+            self.originPicked.emit(x, y)
+            self.update()
+
+    def mouseMoveEvent(self, ev):
+        if self._drag is not None:
+            px, py = ev.position().x(), ev.position().y()
+            dx = px - self._drag[0]
+            dy = py - self._drag[1]
+            self._pan[0] += dx
+            self._pan[1] -= dy
+            self._drag = (px, py)
+            self.update()
+
+    def mouseReleaseEvent(self, ev):
+        self._drag = None
+
+    def mouseDoubleClickEvent(self, ev):
+        self.center_on_holes()
+
+    def paintEvent(self, _ev):
+        p = _QP(self)
+        p.setRenderHint(_QP.Antialiasing)
+        p.fillRect(self.rect(), _QC(20, 20, 22))
+        s = self._scale()
+        w, h = self._work
+        x0, y0 = self._to_px(0, 0, s)
+        x1, y1 = self._to_px(w, h, s)
+        area = _QRF(_QPF(x0, y1), _QPF(x1, y0))
+        p.fillRect(area, _QC(255, 255, 255, 14))
+        p.setPen(_QPen(_QC(10, 132, 255), 1.5))
+        p.setBrush(_Qt.NoBrush)
+        p.drawRect(area)
+
+        ox, oy = self._origin
+        if self._holes:
+            minx = min(hh[0] for hh in self._holes)
+            miny = min(hh[1] for hh in self._holes)
+            maxx = max(hh[0] for hh in self._holes)
+            maxy = max(hh[1] for hh in self._holes)
+            p.setPen(_QPen(_QC(39, 201, 63), 1.2))
+            for (hx, hy, d) in self._holes:
+                cx, cy = self._to_px(hx - minx + ox, hy - miny + oy, s)
+                r = max(1.5, (d / 2.0) * s)
+                p.drawEllipse(_QPF(cx, cy), r, r)
+            bx0, by0 = self._to_px(ox, oy, s)
+            bx1, by1 = self._to_px(ox + (maxx - minx), oy + (maxy - miny), s)
+            p.setPen(_QPen(_QC(39, 201, 63), 1, _Qt.DashLine))
+            p.drawRect(_QRF(_QPF(bx0, by1), _QPF(bx1, by0)))
+
+        ax, ay = self._to_px(ox, oy, s)
+        p.setPen(_QPen(_QC(255, 189, 46), 2))
+        p.drawLine(_QPF(ax - 8, ay), _QPF(ax + 8, ay))
+        p.drawLine(_QPF(ax, ay - 8), _QPF(ax, ay + 8))
+
+        p.setPen(_QC(142, 142, 147))
+        p.drawText(_QPF(self.MARGIN, 16),
+                   "Taladros: %d   |   Area %.0f x %.0f mm   |   zoom %.1fx   |   rueda = zoom, arrastrar derecho = mover"
+                   % (len(self._holes), w, h, self._zoom))
+        p.end()

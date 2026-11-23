@@ -90,12 +90,16 @@ class ExcellonParser:
 
 def excellon_to_gcode(drl_text, feed=100.0, rapid=3000.0,
                       drill_depth=-1.8, safe_z=2.0,
-                      origin_x=0.0, origin_y=0.0):
+                      origin_x=0.0, origin_y=0.0, ref_bounds=None,
+                      rotation=0.0, mirror_x=False, mirror_y=False):
     parser = ExcellonParser()
     holes = parser.parse(drl_text)
 
     if not holes:
         raise ValueError("No se encontraron taladros")
+
+    # Mismo orden que el cobre: espejo y luego rotacion alrededor del origen.
+    holes = transform_holes(holes, rotation, mirror_x, mirror_y)
 
     by_tool = {}
     for x, y, d in holes:
@@ -103,6 +107,9 @@ def excellon_to_gcode(drl_text, feed=100.0, rapid=3000.0,
 
     minx = min(h[0] for h in holes)
     miny = min(h[1] for h in holes)
+    # Marco comun con el cobre (ref_bounds): mismo origen que la capa de referencia.
+    if ref_bounds is not None:
+        minx, miny = ref_bounds[0], ref_bounds[1]
     ox = origin_x - minx
     oy = origin_y - miny
 
@@ -135,3 +142,20 @@ def excellon_to_gcode(drl_text, feed=100.0, rapid=3000.0,
         "tools": len(by_tool),
         "by_tool": {d: len(p) for d, p in by_tool.items()},
     }
+
+
+def transform_holes(holes, rotation=0.0, mirror_x=False, mirror_y=False):
+    """Espejo y rotacion (antihorario, alrededor de 0,0), igual que el Gerber."""
+    import math
+    a = math.radians(float(rotation or 0.0))
+    c, s = math.cos(a), math.sin(a)
+    out = []
+    for x, y, d in holes:
+        if mirror_x:
+            x = -x
+        if mirror_y:
+            y = -y
+        if rotation:
+            x, y = x * c - y * s, x * s + y * c
+        out.append((x, y, d))
+    return out

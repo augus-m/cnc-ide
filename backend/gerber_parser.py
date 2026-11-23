@@ -553,10 +553,66 @@ def _hatch_paths(copper, tool_diameter, pitch):
     return chains
 
 
+def _load_drill_holes(drl_text):
+    """Lee un Excellon (.drl) de KiCad y devuelve [(x, y, diametro_mm)]."""
+    import re
+    if not drl_text:
+        return []
+    if isinstance(drl_text, (list, tuple)):
+        return [(float(x), float(y), float(d)) for x, y, d in drl_text]
+    tools, holes, cur_d = {}, [], None
+    for raw in drl_text.splitlines():
+        s_ = raw.strip()
+        if not s_ or s_.startswith(';'):
+            continue
+        m = re.match(r'^T(\d+)C([\d.]+)$', s_)
+        if m:
+            tools[m.group(1)] = float(m.group(2))
+            continue
+        m = re.match(r'^T(\d+)$', s_)
+        if m:
+            cur_d = tools.get(m.group(1))
+            continue
+        m = re.match(r'^X(-?[\d.]+)Y(-?[\d.]+)$', s_)
+        if m and cur_d is not None:
+            holes.append((float(m.group(1)), float(m.group(2)), cur_d))
+    return holes
+
+
+def _transform_holes(holes, mirror_x=False, mirror_y=False, rotation=0):
+    """Aplica el mismo espejo y rotacion que al cobre (alrededor del origen)."""
+    import math
+    out = []
+    a = math.radians(float(rotation or 0))
+    for x, y, d in holes:
+        if mirror_x:
+            x = -x
+        if mirror_y:
+            y = -y
+        if rotation:
+            x, y = x * math.cos(a) - y * math.sin(a), x * math.sin(a) + y * math.cos(a)
+        out.append((x, y, d))
+    return out
+
+
+def _fill_area(copper, holes, fill_min_width=2.0, hole_margin=0.15):
+    """Zonas de cobre anchas (>= fill_min_width) menos los taladros pasantes.
+    Las pistas finas no entran aqui: se fresan como contorno."""
+    from shapely.geometry import Point
+    half = float(fill_min_width or 0) / 2.0
+    wide = copper.buffer(-half, join_style=2).buffer(half, join_style=2) if half > 0 else copper
+    if holes and not wide.is_empty:
+        circles = [Point(x, y).buffer(d / 2.0 + float(hole_margin), resolution=16)
+                   for x, y, d in holes]
+        wide = wide.difference(unary_union(circles))
+    return wide
+
+
 def gerber_to_paths(gerber_text, tool_diameter=0.2, clearance=0.15,
                     simplify_tol=0.02, mirror_x=False, mirror_y=False, rotation=0,
                     modo="contorno", hatch_pitch=0.15, incluir_plano=False,
-                    edge_gerber=None):
+                    edge_gerber=None, drill_text=None, fill_min_width=2.0,
+                    hole_margin=0.15):
     parser = GerberParser()
     primitives = parser.parse(gerber_text)
 
@@ -628,7 +684,9 @@ def gerber_to_paths(gerber_text, tool_diameter=0.2, clearance=0.15,
                 paths.append(coords)
 
     if modo in ("relleno", "ambos"):
-        fill = _hatch_paths(copper, tool_diameter, hatch_pitch)
+        holes_t = _transform_holes(_load_drill_holes(drill_text), mirror_x, mirror_y, rotation)
+        fill_area = _fill_area(copper, holes_t, fill_min_width, hole_margin)
+        fill = _hatch_paths(fill_area, tool_diameter, hatch_pitch) if not fill_area.is_empty else []
         paths = fill if modo == "relleno" else paths + fill
 
     if edge_gerber and not getattr(gerber_to_paths, "_in_edge", False):
@@ -746,6 +804,174 @@ def _path_moves(path, min_seg=0.05, arc_fit=True, arc_tol=0.015,
     return moves, dist
 
 
+def gerber_pistas_relleno(gerber_text, tool_diameter=0.5, simplify_tol=0.02,
+                          mirror_x=False, mirror_y=False, rotation=0,
+                          hatch_pitch=0.4, drill_text=None,
+                          fill_min_width=2.0, hole_margin=0.15,
+                          track_hole_margin=0.05, edge_tol=0.1, track_gap=0.5,
+                          min_fill_area=2.0):
+    """Modo para plumon: pistas finas (< fill_min_width) como una sola linea
+    por el centro; pads como contorno; zonas anchas rellenas en serpentina
+    dejando libres los taladros pasantes."""
+    from shapely.geometry import LineString
+    from shapely import affinity
+    parser = GerberParser()
+    primitives = parser.parse(gerber_text)
+    if not primitives:
+        return [], None, {"error": "Sin primitivas"}
+
+    thin, pads, copper_geoms = [], [], []
+    for p in primitives:
+        if p.kind == 'line' and 0 < p.width < fill_min_width:
+            thin.append(LineString([(p.x1, p.y1), (p.x2, p.y2)]))
+            copper_geoms.append(_primitive_to_shapely(p))
+        elif p.kind == 'arc' and 0 < p.width < fill_min_width:
+            pts = _arc_points(p.x1, p.y1, p.x2, p.y2, p.cx, p.cy, p.cw, segments=32)
+            thin.append(LineString(pts))
+            copper_geoms.append(_primitive_to_shapely(p))
+        else:
+            g = _primitive_to_shapely(p)
+            if g is None or g.is_empty:
+                continue
+            if p.kind == 'flash':
+                pads.append(g)
+            copper_geoms.append(g)
+    copper_geoms.extend(parser.regions)
+    copper_geoms = [g for g in copper_geoms if g is not None and not g.is_empty]
+    if not copper_geoms:
+        return [], parser.bounds, {"error": "Sin geometrias validas"}
+
+    def tf(g):
+        if g is None or g.is_empty:
+            return g
+        if mirror_x or mirror_y:
+            g = affinity.scale(g, xfact=-1.0 if mirror_x else 1.0,
+                               yfact=-1.0 if mirror_y else 1.0, origin=(0, 0))
+        if rotation:
+            g = affinity.rotate(g, float(rotation), origin=(0, 0))
+        return g
+
+    paths = []
+    # Pads transformados: una pista que pasa cerca de un pad sin terminar en el
+    # se recorta a track_gap del borde del pad (si no, los trazos se montan).
+    from shapely.geometry import Point as _Pt
+    pad_polys_t = [tf(g) for g in pads if g is not None and not g.is_empty]
+    holes_t = _transform_holes(_load_drill_holes(drill_text), mirror_x, mirror_y, rotation)
+    hole_zone = (unary_union([_Pt(x, y).buffer(d / 2.0 + float(track_hole_margin), resolution=16)
+                              for x, y, d in holes_t]) if holes_t else None)
+    thin_out, pad_out, wide_out = [], [], []
+    for ls in thin:
+        base_t = tf(ls)
+        cur = [base_t]
+        for pp in pad_polys_t:
+            nxt = []
+            for q in cur:
+                if q.is_empty or q.geom_type != 'LineString' or q.distance(pp) >= float(track_gap):
+                    nxt.append(q)
+                    continue
+                ends = [q.coords[0], q.coords[-1]]
+                if any(Point(e).distance(pp) < 0.1 for e in ends):
+                    nxt.append(q)   # la pista termina en este pad: conexion intencional
+                    continue
+                cut = q.difference(pp.buffer(float(track_gap), join_style=2))
+                nxt.extend(list(cut.geoms) if cut.geom_type == 'MultiLineString' else [cut])
+            cur = nxt
+        pieces = []
+        for q in cur:
+            if q.is_empty:
+                continue
+            if hole_zone is not None:
+                q = q.difference(hole_zone)
+            pieces.extend(list(q.geoms) if q.geom_type == 'MultiLineString' else [q])
+        for piece in pieces:
+            if piece.geom_type == 'LineString':
+                c = list(piece.coords)
+                if len(c) >= 2:
+                    thin_out.append(c)
+    for pg in pads:
+        pt = tf(pg)
+        polys = [pt] if pt.geom_type == 'Polygon' else list(getattr(pt, 'geoms', []))
+        for poly in polys:
+            if poly.geom_type == 'Polygon':
+                c = list(poly.exterior.coords)
+                if len(c) >= 2:
+                    pad_out.append(c)
+
+    copper_t = tf(unary_union(copper_geoms))
+    holes_t = _transform_holes(_load_drill_holes(drill_text), mirror_x, mirror_y, rotation)
+    fill_area = _fill_area(copper_t, holes_t, fill_min_width, hole_margin)
+    # Pistas de ancho >= fill_min_width: se rellenan tal cual. Asi no las borra
+    # la apertura morfologica (una pista de 2.0 mm no sobrevive a erosion de 1.0 mm).
+    wide_lines = [_primitive_to_shapely(p) for p in primitives
+                  if p.kind in ('line', 'arc') and p.width >= fill_min_width]
+    wide_lines = [g for g in wide_lines if g is not None and not g.is_empty]
+    if wide_lines:
+        from shapely.geometry import Point as _P2
+        fill_area = unary_union([fill_area, tf(unary_union(wide_lines))])
+        if holes_t:
+            hz = unary_union([_P2(x, y).buffer(d / 2.0 + float(hole_margin), resolution=16)
+                              for x, y, d in holes_t])
+            fill_area = fill_area.difference(hz)
+    # Separacion entre el relleno/contorno y las pistas finas: el trazo de cada
+    # pista ocupa su ancho, asi que el relleno debe quedar a track_gap del centro.
+    if thin and not fill_area.is_empty:
+        fill_area = fill_area.difference(tf(unary_union(thin)).buffer(float(track_gap), join_style=2))
+    # Pads: el relleno tambien se queda a track_gap de cada pad. Antes el relleno
+    # cubria el area del pad y sus lineas quedaban a ~0.1 mm del contorno del pad.
+    # Solo se separan los pads aislados. Los que tocan zona o pista ancha siguen
+    # conectados al relleno, como antes (si no, la zona queda desconectada de sus pads).
+    if pad_polys_t and not fill_area.is_empty:
+        _wide_src = list(parser.regions) + list(wide_lines)
+        _wide_t = tf(unary_union(_wide_src)) if _wide_src else None
+        iso = [pp for pp in pad_polys_t if _wide_t is None or _wide_t.is_empty or not pp.intersects(_wide_t)]
+        if iso:
+            fill_area = fill_area.difference(unary_union(iso).buffer(float(track_gap), join_style=2))
+    # Quita tiras y triangulos mas finos que la herramienta o islas pequenas:
+    # son restos de la zona que no se pueden fresar bien y se ven como uniones.
+    if not fill_area.is_empty:
+        rr = float(tool_diameter) / 2.0
+        fill_area = fill_area.buffer(-rr, join_style=2).buffer(rr, join_style=2)
+        if fill_area.geom_type in ('MultiPolygon', 'GeometryCollection'):
+            kept = [q for q in fill_area.geoms if q.geom_type == 'Polygon' and q.area >= float(min_fill_area)]
+        else:
+            kept = [fill_area] if fill_area.geom_type == 'Polygon' and fill_area.area >= float(min_fill_area) else []
+        fill_area = unary_union(kept) if kept else fill_area.buffer(0).__class__()
+    if not fill_area.is_empty:
+        def _polys(gm):
+            if gm.is_empty:
+                return []
+            if gm.geom_type == 'Polygon':
+                return [gm]
+            return [q for q in getattr(gm, 'geoms', []) if q.geom_type == 'Polygon']
+        # Contorno de cada zona ancha, hacia dentro: la punta queda a tool/2 + edge_tol del borde.
+        inner_c = fill_area.buffer(-(float(tool_diameter) / 2.0 + float(edge_tol)), join_style=2)
+        for poly in _polys(inner_c):
+            c = list(poly.exterior.coords)
+            if len(c) >= 2:
+                wide_out.append(c)
+            for ring in poly.interiors:
+                rc = list(ring.coords)
+                if len(rc) >= 2:
+                    wide_out.append(rc)
+        # Relleno dentro del contorno, con la misma tolerancia para que no se salga.
+        inner_f = fill_area.buffer(-float(edge_tol), join_style=2)
+        if not inner_f.is_empty:
+            wide_out.extend(_hatch_paths(inner_f, tool_diameter, max(float(hatch_pitch), 0.02)))
+
+    # Orden de fresado: 1) pads, 2) pistas finas, 3) zonas anchas (contorno + relleno).
+    paths = pad_out + thin_out + wide_out
+    if not paths:
+        return [], parser.bounds, {"error": "Sin trazos"}
+    all_x = [pt[0] for pth in paths for pt in pth]
+    all_y = [pt[1] for pth in paths for pt in pth]
+    bounds = (min(all_x), min(all_y), max(all_x), max(all_y))
+    return paths, bounds, {
+        "primitives": len(primitives), "paths": len(paths),
+        "thin": len(thin), "pads": len(pads),
+        "warnings": parser.warnings, "bounds": bounds,
+    }
+
+
 def gerber_to_gcode(gerber_text, tool_diameter=0.2, clearance=0.15,
                     feed=300.0, rapid=3000.0, pen_up=2.0, pen_down=0.0,
                     origin_x=0.0, origin_y=0.0, simplify_tol=0.02,
@@ -754,14 +980,30 @@ def gerber_to_gcode(gerber_text, tool_diameter=0.2, clearance=0.15,
                     pen_mode="m280", servo_up=0.0, servo_down=95.0, servo_p0=True,
                     min_seg=0.05, arc_fit=True, arc_tol=0.015, servo_down_speed=None,
                     modo="contorno", hatch_pitch=0.15, edge_gerber=None,
-                    ref_bounds=None):
-    paths, bounds, info = gerber_to_paths(gerber_text, tool_diameter, clearance,
-                                          simplify_tol=simplify_tol,
-                                          mirror_x=mirror_x, mirror_y=mirror_y,
-                                          rotation=rotation, modo=modo if modo != "aislamiento" else "contorno",
-                                          hatch_pitch=hatch_pitch,
-                                          incluir_plano=(modo == "aislamiento"),
-                                          edge_gerber=edge_gerber)
+                    ref_bounds=None, drill_text=None, fill_min_width=2.0):
+    if modo == "plumon_kicad":
+        # Import diferido: pen_kicad importa este modulo.
+        from pen_kicad import gerber_plumon_kicad
+        paths, bounds, info = gerber_plumon_kicad(
+            gerber_text, tool_diameter=tool_diameter, simplify_tol=min(float(simplify_tol), 0.02),
+            mirror_x=mirror_x, mirror_y=mirror_y, rotation=rotation,
+            drill_text=drill_text)
+    elif modo == "pistas_relleno":
+        paths, bounds, info = gerber_pistas_relleno(
+            gerber_text, tool_diameter=tool_diameter, simplify_tol=simplify_tol,
+            mirror_x=mirror_x, mirror_y=mirror_y, rotation=rotation,
+            hatch_pitch=hatch_pitch, drill_text=drill_text,
+            fill_min_width=fill_min_width)
+    else:
+        paths, bounds, info = gerber_to_paths(gerber_text, tool_diameter, clearance,
+                                              simplify_tol=simplify_tol,
+                                              mirror_x=mirror_x, mirror_y=mirror_y,
+                                              rotation=rotation, modo=modo if modo != "aislamiento" else "contorno",
+                                              hatch_pitch=hatch_pitch,
+                                              incluir_plano=(modo == "aislamiento"),
+                                              edge_gerber=edge_gerber,
+                                              drill_text=drill_text,
+                                              fill_min_width=fill_min_width)
 
     if not paths:
         raise ValueError("No se pudieron extraer paths del Gerber")

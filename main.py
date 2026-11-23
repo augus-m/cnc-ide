@@ -100,8 +100,17 @@ class CncWebBridge(QObject):
         self.backend.settings.setValue("ignore_z_for_xy", bool(enabled))
         self.backend.settings.sync()
 
+    def _rapid_feed_for_mode(self) -> float:
+        """Velocidad de los recorridos sin trazo segun el modo de la placa.
+
+        NORMAL 1200 mm/min (20 mm/s, como el G0 del firmware); RAPIDO 600;
+        PRECISION 300 (5 mm/s, limite para no perder pasos en 1/32).
+        """
+        mode = str(getattr(self.backend, "_mode_applied", "NORMAL")).upper()
+        return {"NORMAL": 1200.0, "FAST": 600.0, "RAPIDO": 600.0, "PRECISION": 300.0, "PRECISO": 300.0}.get(mode, 1200.0)
+
     @staticmethod
-    def _strip_z_motion(lines: list[str]) -> list[str]:
+    def _strip_z_motion(lines: list[str], rapid_feed: float = 50.0) -> list[str]:
         """Prepara un programa XY: omite Z y limita rápidos a F50 mm/min."""
         result = []
         z_word = re.compile(r"(?<![A-Z])Z\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)", re.I)
@@ -120,7 +129,7 @@ class CncWebBridge(QObject):
             if re.match(r"^\s*G0+\b", code, re.I) and xy_word.search(code):
                 code = re.sub(r"^\s*G0+\b", "G1", code, count=1, flags=re.I)
                 code = re.sub(r"(?<![A-Z])F\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)", "", code, flags=re.I)
-                code = code.rstrip() + " F50.0"
+                code = code.rstrip() + f" F{rapid_feed:.1f}"
             if motion.search(code) and not xy_word.search(code):
                 code = " ".join(m_word.findall(code))
             output = re.sub(r"\s+", " ", code).strip()
@@ -137,6 +146,21 @@ class CncWebBridge(QObject):
             return
         if command.upper() == "M112":
             self.backend._on_estop()
+        elif command.upper().startswith("M280"):
+            # M280 Servo command: firmware blocks pending movement.
+            # Check if job is running to warn user.
+            # The firmware will still block internally, but we inform the user.
+            job_running = bool(getattr(self.backend, "job_running", False))
+            if job_running:
+                self._log("Advertencia: M280 mientras trabajo en curso. Puede causar pausas de varios segundos. El servo se moverá cuando el movimiento actual termine.", level="warning")
+                self.backend.state_badge.setText("M280: trabajo en curso - posible pausa")
+                self.backend.state_badge.setProperty("state", "warning")
+                self.backend._refresh_style(self.backend.state_badge)
+            else:
+                self.backend.state_badge.setText("Listo")
+                self.backend.state_badge.setProperty("state", "idle")
+                self.backend._refresh_style(self.backend.state_badge)
+            self.backend._send_cmd(command)
         else:
             self.backend._send_cmd(command)
 
@@ -199,7 +223,7 @@ class CncWebBridge(QObject):
             return
         ignore_z = self.backend.settings.value("ignore_z_for_xy", False, type=bool)
         if ignore_z:
-            lines = self._strip_z_motion(lines)
+            lines = self._strip_z_motion(lines, self._rapid_feed_for_mode())
             if not lines:
                 self._log("No quedan movimientos X/Y después de omitir Z", level="error")
                 return
@@ -332,6 +356,7 @@ class CncWebBridge(QObject):
             "dxf": self.backend._open_dxf_file,
             "gerber": self.backend._open_gerber_file,
             "excellon": self.backend._open_excellon_file,
+            "imagen": self.backend._open_image_to_gcode,
             "save": self.backend._save_gcode_file,
         }
         action = actions.get(str(kind))
@@ -345,6 +370,11 @@ class CncWebBridge(QObject):
     def openRecent(self, index: int) -> None:
         if 0 <= index < self.backend.file_list.count():
             self.backend._on_file_double_clicked(self.backend.file_list.item(index))
+            self.publishProgram()
+
+    @Slot(int)
+    def removeRecent(self, index: int) -> None:
+        if self.backend.remove_recent_file(index):
             self.publishProgram()
 
     @Slot()
@@ -665,16 +695,24 @@ class CncWebBridge(QObject):
         if not target.is_file():
             return {"ok": False, "error": "El archivo no existe"}
         desktop = Path(desktop_path)
-        if desktop.is_file() and shutil.which("gio"):
+        if sys.platform == "win32":
+            try:
+                os.startfile(str(target))
+            except OSError as exc:
+                return {"ok": False, "error": str(exc)}
+        elif desktop.is_file() and shutil.which("gio"):
             cmd = ["gio", "launch", str(desktop), str(target)]
+            try:
+                subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError as exc:
+                return {"ok": False, "error": str(exc)}
         elif shutil.which("xdg-open"):
-            cmd = ["xdg-open", str(target)]
+            try:
+                subprocess.Popen(["xdg-open", str(target)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError as exc:
+                return {"ok": False, "error": str(exc)}
         else:
             return {"ok": False, "error": "No se encontró gio ni xdg-open"}
-        try:
-            subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError as exc:
-            return {"ok": False, "error": str(exc)}
         self._log(f"Abriendo {target.name} con {desktop.stem or 'la aplicación predeterminada'}")
         return {"ok": True}
 
@@ -685,16 +723,24 @@ class CncWebBridge(QObject):
         folder = target if target.is_dir() else target.parent
         if not folder.is_dir():
             return {"ok": False, "error": "La carpeta no existe"}
-        if not shutil.which("xdg-open"):
+        if sys.platform == "win32":
+            try:
+                subprocess.Popen(["explorer", str(folder)])
+            except OSError as exc:
+                return {"ok": False, "error": str(exc)}
+        elif shutil.which("xdg-open"):
+            subprocess.Popen(["xdg-open", str(folder)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
             return {"ok": False, "error": "No se encontró xdg-open"}
-        subprocess.Popen(["xdg-open", str(folder)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return {"ok": True, "path": str(folder)}
 
     @Slot()
     def openHistoryFolder(self) -> None:
         folder = APP_DIR / "data" / "historial"
         folder.mkdir(parents=True, exist_ok=True)
-        if shutil.which("xdg-open"):
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", str(folder)])
+        elif shutil.which("xdg-open"):
             subprocess.Popen(["xdg-open", str(folder)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self._log(f"Historial: {folder}")
 
@@ -876,7 +922,7 @@ class CncWebBridge(QObject):
             "holes": holes,
             "name": (w.file_list.item(w.file_list.count() - 1).text()
                      if w.file_list.count() else ""),
-            "motion": model["segments"],
+            "motion": [list(segment) for segment in model["segments"]],  # tuplas -> listas: QWebChannel serializa las tuplas como null
             "preflight": model["warnings"],
         }
 

@@ -1000,6 +1000,7 @@
                 <div class="view-tabs">
                     <div class="view-tab active">Toolpath 2D</div>
                     <div class="view-tab">Vista 3D</div>
+                    <div class="view-tab">Simulador 3D</div>
                 </div>
                 <div id="machiningControls" style="display:none;align-items:center;gap:6px;margin-left:6px">
                     <button class="top-btn" id="machiningToggle" onclick="toggleMachining()">Simular mecanizado</button>
@@ -1137,6 +1138,10 @@
                         <div class="menu-item">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                             Convertir Excellon (drill)
+                        </div>
+                        <div class="menu-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 16c2-6 4-6 6-2s2 2 4-4"/></svg>
+                            Convertir PDF / imagen
                         </div>
                         <div class="menu-item">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -5018,16 +5023,17 @@ function draw3() {
   const m = mouse && s2w3(t, mouse[0], mouse[1]);
   $('sbR').textContent = m ? `Cursor: (${m[0].toFixed(1)}, ${m[1].toFixed(1)})` : 'Cursor: (-, -)';
 }
-const draw = () => view === '2d' ? draw2() : draw3();
+const draw = () => view === '2d' ? draw2() : (view === '3d' ? draw3() : undefined);
 function setView(v) {
   view = v; c2.style.display = v === '2d' ? '' : 'none'; c3.style.display = v === '3d' ? '' : 'none';
+  if (window.sim3d) window.sim3d.show(v === 'gl');
   $('machiningControls').style.display = v === '3d' ? 'flex' : 'none';
-  document.querySelectorAll('.view-tab').forEach((e,i) => e.classList.toggle('active', (i === 0) === (v === '2d')));
+  document.querySelectorAll('.view-tab').forEach((e,i) => e.classList.toggle('active', (i === 0 && v === '2d') || (i === 1 && v === '3d') || (i === 2 && v === 'gl')));
   if (v === '3d') { if (!v3.fitted) { v3.zoom = 1; v3.px = v3.py = 0; v3.fitted = true; } c3.focus(); }
   draw();
 }
 const tabs = document.querySelectorAll('.view-tab');
-tabs[0].onclick = () => setView('2d'); tabs[1].onclick = () => setView('3d');
+tabs[0].onclick = () => setView('2d'); tabs[1].onclick = () => setView('3d'); if (tabs[2]) tabs[2].onclick = () => setView('gl');
 
 /* ---- interacción 2D ---- */
 const pos = (e, c) => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
@@ -5096,6 +5102,7 @@ function setHostPosition(px, py, pz, valid, cutting=false) {
   const wasValid = tool.valid;
   const nextValid = !!valid;
   const nx = Number(px) || 0, ny = Number(py) || 0, nz = Number(pz) || 0;
+  if (window.sim3d) { try { window.sim3d.setTool(nx, ny, nz, nextValid, cutting, arguments.length >= 5); } catch (e) { console.warn('[sim3d]', e); } }
   if (nextValid && cutting && view === '3d') { machining.x=nx; machining.y=ny; machining.z=nz; removeStockAt(nx,ny,nz); }
   let immediateDraw = false;
   tool.valid = nextValid;
@@ -5142,6 +5149,7 @@ function animateHostPosition(now) {
 }
 function setHostProgram(program) {
   machining.motion = program.motion || [];
+  if (window.sim3d) { try { window.sim3d.setProgram(machining.motion); } catch (e) { console.warn('[sim3d]', e); } }
   Object.entries(program.layers || {}).forEach(([name, layer]) => {
     if (!L[name]) L[name] = {c:layer.color || '#ff8c42', w:2, v:true, s:[]};
     L[name].c = layer.color || L[name].c;
@@ -5168,7 +5176,7 @@ window.viewerAPI = {L, HL, setTool, setHostPosition, setHostProgram, setView,
   setMotionVisibility,
   reset2: () => { v2.zoom = 1; v2.px = v2.py = 0; draw(); }, reset3,
   fit3: () => { fit3(vz.clientWidth, vz.clientHeight); draw(); }, redraw: draw};
-window.viewerAPI.setHostSimulationRunning = running => { machining.running=!!running; };
+window.viewerAPI.setHostSimulationRunning = running => { machining.running=!!running; if (window.sim3d) { try { window.sim3d.setRunning(!!running); } catch (e) { console.warn('[sim3d]', e); } } };
 window.toggleMachining = toggleMachining;
 window.resetMachining = resetMachining;
 document.getElementById('polygonToggle').addEventListener('change', e => { machining.polygons=e.target.checked; draw(); });
@@ -5236,6 +5244,9 @@ if (homeBtn) homeBtn.onclick = () => machineCmd('Home', '$H', 0, 0);
 draw();
 })();
 </script>
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="sim3d.js"></script>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <script src="bridge.js"></script>
 </body>
